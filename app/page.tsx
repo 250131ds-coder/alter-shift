@@ -117,27 +117,27 @@ export default function Dashboard() {
         </div>
       </div>
 
-{/* フッター誘導リンク（他画面への遷移を有効化！） */}
+{/* フッター誘導リンク（これで全画面がリンクで直結！） */}
       <footer className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Link href="/staff" className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-purple-50 hover:border-purple-200 transition-all block">
+        <Link href="/staff" className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-purple-50 hover:border-purple-200 transition-all block group">
           <span className="text-lg">👥</span> 
-          <p className="text-xs font-semibold text-gray-600 mt-1 group-hover:text-purple-700">スタッフ管理 (CRUD)</p>
+          <p className="text-xs font-semibold text-gray-600 mt-1">スタッフ管理 (CRUD)</p>
         </Link>
         
-        <Link href="/settings" className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-purple-50 hover:border-purple-200 transition-all block">
+        <Link href="/settings" className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-purple-50 hover:border-purple-200 transition-all block group">
           <span className="text-lg">⚙️</span> 
           <p className="text-xs font-semibold text-gray-600 mt-1">スキル＆イベント設定</p>
         </Link>
 
-        <div onClick={() => alert('【モック動作】スタッフ用の希望提出画面（スマホ版）が開きます')} className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-100 transition-all opacity-60">
+        <Link href="/submit" className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-purple-50 hover:border-purple-200 transition-all block group">
           <span className="text-lg">📱</span> 
-          <p className="text-xs font-semibold text-gray-500 mt-1">スタッフ希望提出（準備中）</p>
-        </div>
+          <p className="text-xs font-semibold text-gray-600 mt-1">スタッフ希望提出</p>
+        </Link>
 
-        <div onClick={() => alert('【モック動作】AI打診文つきのヘルプ相談チャットが開きます')} className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-100 transition-all opacity-60">
+        <Link href="/chat" className="bg-white p-4 rounded-lg text-center shadow-sm border border-gray-100 cursor-pointer hover:bg-purple-50 hover:border-purple-200 transition-all block group">
           <span className="text-lg">💬</span> 
-          <p className="text-xs font-semibold text-gray-500 mt-1">ヘルプ相談チャット（準備中）</p>
-        </div>
+          <p className="text-xs font-semibold text-gray-600 mt-1">ヘルプ相談チャット</p>
+        </Link>
       </footer>
     </div>
   );
