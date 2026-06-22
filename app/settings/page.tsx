@@ -3,17 +3,37 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 
+interface Requirement {
+  skill: string;
+  count: number;
+}
+
+interface EventTemplate {
+  id: number;
+  name: string;
+  requirements: Requirement[];
+}
+
 export default function SettingsPage() {
   // モック用のスキルマスタデータ
   const [skills, setSkills] = useState(['レジ', 'VMD', '検品', '接客', 'キッチン', 'ホール']);
   const [newSkill, setNewSkill] = useState('');
 
   // モック用のイベントテンプレートデータ
-  const [events, setEvents] = useState([
+  const [events, setEvents] = useState<EventTemplate[]>([
     { id: 1, name: '通常平日', requirements: [{ skill: 'レジ', count: 1 }, { skill: '接客', count: 1 }] },
     { id: 2, name: '週末セール日', requirements: [{ skill: 'レジ', count: 3 }, { skill: '接客', count: 4 }, { skill: 'VMD', count: 1 }] },
     { id: 3, name: '店内棚卸し', requirements: [{ skill: 'レジ', count: 1 }, { skill: '検品', count: 2 }] },
   ]);
+
+  // モーダルの開閉状態
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [editingEventId, setEditingEventId] = useState<number | null>(null);
+
+  // モーダル用入力State
+  const [eventName, setEventName] = useState('');
+  const [requirementsInput, setRequirementsInput] = useState<{ [key: string]: number }>({});
 
   // スキル追加ボタンの擬似アクション
   const handleAddSkill = (e: React.FormEvent) => {
@@ -30,6 +50,90 @@ export default function SettingsPage() {
   // スキル削除ボタンの擬似アクション
   const handleDeleteSkill = (skillToDelete: string) => {
     setSkills(skills.filter(skill => skill !== skillToDelete));
+  };
+
+  // 新規作成モーダルを開く
+  const openCreateModal = () => {
+    setModalMode('create');
+    setEditingEventId(null);
+    setEventName('');
+    const initialReqs: { [key: string]: number } = {};
+    skills.forEach(skill => {
+      initialReqs[skill] = 0;
+    });
+    setRequirementsInput(initialReqs);
+    setIsModalOpen(true);
+  };
+
+  // 編集モーダルを開く
+  const openEditModal = (event: EventTemplate) => {
+    setModalMode('edit');
+    setEditingEventId(event.id);
+    setEventName(event.name);
+    
+    // 現在登録されているスキルをベースに、既存テンプレートの人数をマッピング
+    const initialReqs: { [key: string]: number } = {};
+    skills.forEach(skill => {
+      const found = event.requirements.find(r => r.skill === skill);
+      initialReqs[skill] = found ? found.count : 0;
+    });
+    setRequirementsInput(initialReqs);
+    setIsModalOpen(true);
+  };
+
+  // モーダル内で各スキルの人数が変更された時の処理
+  const handleCountChange = (skill: string, count: number) => {
+    setRequirementsInput({
+      ...requirementsInput,
+      [skill]: Math.max(0, count),
+    });
+  };
+
+  // テンプレートの保存処理（新規・編集共通）
+  const handleSaveEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!eventName.trim()) {
+      alert('イベント名を入力してください');
+      return;
+    }
+
+    // 人数が1人以上割り当てられているスキルだけを抽出
+    const validRequirements = Object.keys(requirementsInput)
+      .filter((skill) => requirementsInput[skill] > 0)
+      .map((skill) => ({ skill, count: requirementsInput[skill] }));
+
+    if (validRequirements.length === 0) {
+      alert('少なくとも1つのスキルに1名以上の人数を設定してください');
+      return;
+    }
+
+    if (modalMode === 'create') {
+      // 新規登録
+      const newEvent: EventTemplate = {
+        id: Date.now(),
+        name: eventName,
+        requirements: validRequirements,
+      };
+      setEvents([...events, newEvent]);
+      alert(`【登録完了】イベントテンプレート「${eventName}」を追加しました。`);
+    } else {
+      // 編集更新
+      setEvents(events.map(ev => 
+        ev.id === editingEventId 
+          ? { ...ev, name: eventName, requirements: validRequirements }
+          : ev
+      ));
+      alert(`【更新完了】イベントテンプレート「${eventName}」を修正しました。`);
+    }
+
+    setIsModalOpen(false);
+  };
+
+  // イベント削除ボタンの処理
+  const handleDeleteEvent = (id: number, name: string) => {
+    if (confirm(`イベントテンプレート「${name}」を削除しますか？`)) {
+      setEvents(events.filter(ev => ev.id !== id));
+    }
   };
 
   return (
@@ -50,7 +154,7 @@ export default function SettingsPage() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* 左側：スキルマスタ管理（CRUDイメージ） */}
+        {/* 左側：スキルマスタ管理 */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>🏷️</span> スキル（職能・ポジション）の定義
@@ -73,7 +177,7 @@ export default function SettingsPage() {
             </button>
           </form>
 
-          {/* スキル一覧（登録されたタグの表示） */}
+          {/* スキル一覧 */}
           <p className="text-xs text-gray-400 mb-2">現在登録されているスキル（クリックで削除可能）</p>
           <div className="flex flex-wrap gap-2">
             {skills.map((skill, index) => (
@@ -94,7 +198,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* 右側：イベントテンプレート管理（CRUDイメージ） */}
+        {/* 右側：イベントテンプレート管理 */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>📢</span> 日別イベント・必要人数のテンプレート
@@ -106,8 +210,18 @@ export default function SettingsPage() {
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="font-bold text-gray-800 text-sm">{ev.name}</h3>
                   <div className="flex gap-2">
-                    <button className="text-xs text-blue-600 hover:underline">編集</button>
-                    <button className="text-xs text-red-500 hover:underline">削除</button>
+                    <button 
+                      onClick={() => openEditModal(ev)} 
+                      className="text-xs text-blue-600 hover:underline font-medium"
+                    >
+                      編集
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteEvent(ev.id, ev.name)} 
+                      className="text-xs text-red-500 hover:underline font-medium"
+                    >
+                      削除
+                    </button>
                   </div>
                 </div>
                 {/* 必要なスキルの内訳 */}
@@ -123,13 +237,75 @@ export default function SettingsPage() {
           </div>
 
           <button 
-            onClick={() => alert('【モック動作】新しいイベントパターン登録用のフォームが開きます')}
+            onClick={openCreateModal}
             className="w-full mt-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg border border-dashed border-gray-300 transition-colors"
           >
             ＋ 新しいイベントテンプレートを作成
           </button>
         </div>
       </div>
+
+      {/* 新規登録・編集兼用のモーダルウィンドウ */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl border border-gray-200 max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {modalMode === 'create' ? '📅 新しいテンプレートを作成' : '📝 テンプレートを編集'}
+            </h3>
+            
+            <form onSubmit={handleSaveEvent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">イベント名</label>
+                <input
+                  type="text"
+                  required
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  placeholder="例: クリスマス商戦、平日雨天時"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-2">必要な職能・ポジションごとの人数</label>
+                <div className="max-h-48 overflow-y-auto space-y-2 border border-gray-100 p-2 rounded-lg bg-gray-50">
+                  {skills.map((skill) => (
+                    <div key={skill} className="flex justify-between items-center bg-white p-2 rounded border border-gray-200">
+                      <span className="text-xs font-medium text-gray-700">{skill}</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          value={requirementsInput[skill] || 0}
+                          onChange={(e) => handleCountChange(skill, parseInt(e.target.value) || 0)}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        <span className="text-xs text-gray-500">名</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg shadow"
+                >
+                  {modalMode === 'create' ? 'テンプレートを保存' : '変更を適用'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
