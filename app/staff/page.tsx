@@ -6,10 +6,10 @@ import Link from 'next/link';
 export default function StaffPage() {
   // モック用のスタッフ一覧データ
   const [staffList, setStaffList] = useState([
-    { id: 1, name: '横浜 旭', role: '店長', email: 'yokohama@example.com', skills: ['レジ', 'VMD', '検品'] },
-    { id: 2, name: '山田 太郎', role: 'アルバイト', email: 'yamada@example.com', skills: ['レジ', '接客'] },
-    { id: 3, name: '佐藤 美咲', role: 'パート', email: 'sato@example.com', skills: ['レジ', '検品'] },
-    { id: 4, name: '鈴木 一郎', role: 'アルバイト', email: 'suzuki@example.com', skills: ['接客'] },
+    { id: 1, name: '横浜 旭', role: '店長', email: 'yokohama@example.com', phone: '090-0000-0000', skills: ['レジ', 'VMD', '検品'] },
+    { id: 2, name: '山田 太郎', role: 'アルバイト', email: 'yamada@example.com', phone: '080-0000-0000', skills: ['レジ', '接客'] },
+    { id: 3, name: '佐藤 美咲', role: 'パート', email: 'sato@example.com', phone: '070-0000-0000', skills: ['レジ', '検品'] },
+    { id: 4, name: '鈴木 一郎', role: 'アルバイト', email: 'suzuki@example.com', phone: '050-0000-0000', skills: ['接客'] },
   ]);
 
   // 利用可能なスキルマスタ（チェックボックス用）
@@ -19,6 +19,7 @@ export default function StaffPage() {
   const [name, setName] = useState('');
   const [role, setRole] = useState('アルバイト');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState(''); // 連絡先用State追加
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
   // スキルのチェックボックスが変更された時の処理
@@ -43,6 +44,7 @@ export default function StaffPage() {
       name,
       role,
       email,
+      phone, // 連絡先を追加
       skills: selectedSkills,
     };
 
@@ -51,6 +53,7 @@ export default function StaffPage() {
     // フォームのリセット
     setName('');
     setEmail('');
+    setPhone(''); // リセット追加
     setSelectedSkills([]);
     alert('【モック動作】スタッフ情報を登録しました（後ほどDBと連携します）');
   };
@@ -72,7 +75,7 @@ export default function StaffPage() {
       </div>
 
       {/* ヘッダーエリア */}
-      <header className="mb-8 bg-white p-6 rounded-xl shadow-sm性能">
+      <header className="mb-8 bg-white p-6 rounded-xl shadow-sm">
         <h1 className="text-2xl font-bold text-gray-800">👥 スタッフ管理・スキル紐付け</h1>
         <p className="text-sm text-gray-500 mt-1">
           店舗に所属するスタッフの登録（CRUD）と、それぞれの保有スキルの割り当てを行います。
@@ -119,6 +122,18 @@ export default function StaffPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tanaka@example.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+
+            {/* 連絡先入力項目の追加 */}
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1">連絡先（電話番号）</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="090-0000-0000"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
@@ -173,7 +188,10 @@ export default function StaffPage() {
                       <div className="font-semibold text-gray-800">{staff.name}</div>
                       <div className="text-xs text-gray-400">{staff.role}</div>
                     </td>
-                    <td className="p-3 text-gray-600 text-xs">{staff.email}</td>
+                    <td className="p-3 text-gray-600 text-xs">
+                      <div>{staff.email}</div>
+                      <div className="text-gray-400 mt-1">{staff.phone}</div>
+                    </td>
                     <td className="p-3">
                       <div className="flex flex-wrap gap-1">
                         {staff.skills.length > 0 ? (
