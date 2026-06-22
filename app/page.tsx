@@ -161,7 +161,7 @@ export default function Dashboard() {
         [dayKey]: { status: '充足', label: '適正', width: 'w-full', color: 'bg-green-500' }
       }));
 
-      alert(`🎉 神UX連動成功！\n${droppedHelper.name}さんを配置し、対象日の「人数不足警告」を解除しました。`);
+      alert(`🎉 UX連動成功！\n${droppedHelper.name}さんを配置し、対象日の「人数不足警告」を解除しました。`);
     }
   };
 
