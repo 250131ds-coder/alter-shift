@@ -3,24 +3,37 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 
+// スタッフ1人あたりの型定義
+interface Staff {
+  id: number;
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  skills: string[];
+}
+
 export default function StaffPage() {
-  // モック用のスタッフ一覧データ
-  const [staffList, setStaffList] = useState([
+  // 💡 【修正】 useState<Staff[]> と配列の型に修正
+  const [staffList, setStaffList] = useState<Staff[]>([
     { id: 1, name: '横浜 旭', role: '店長', email: 'yokohama@example.com', phone: '090-0000-0000', skills: ['レジ', 'VMD', '検品'] },
     { id: 2, name: '山田 太郎', role: 'アルバイト', email: 'yamada@example.com', phone: '080-0000-0000', skills: ['レジ', '接客'] },
     { id: 3, name: '佐藤 美咲', role: 'パート', email: 'sato@example.com', phone: '070-0000-0000', skills: ['レジ', '検品'] },
     { id: 4, name: '鈴木 一郎', role: 'アルバイト', email: 'suzuki@example.com', phone: '050-0000-0000', skills: ['接客'] },
   ]);
 
-  // 利用可能なスキルマスタ（チェックボックス用）
+  // 利用可能なスキルマスタ
   const availableSkills = ['レジ', 'VMD', '検品', '接客', 'キッチン', 'ホール'];
 
-  // 新規登録フォーム用のState
+  // フォーム用State
   const [name, setName] = useState('');
   const [role, setRole] = useState('アルバイト');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState(''); // 連絡先用State追加
+  const [phone, setPhone] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+
+  // 編集モードを管理するためのState
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // スキルのチェックボックスが変更された時の処理
   const handleSkillChange = (skill: string) => {
@@ -31,37 +44,66 @@ export default function StaffPage() {
     }
   };
 
-  // スタッフ追加ボタンの擬似アクション（CRUDのCreateイメージ）
-  const handleAddStaff = (e: React.FormEvent) => {
+  // フォーム送信ハンドラー（新規登録 & 編集保存の共通化）
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) {
       alert('名前とメールアドレスを入力してください');
       return;
     }
 
-    const newStaff = {
-      id: staffList.length + 1,
-      name,
-      role,
-      email,
-      phone, // 連絡先を追加
-      skills: selectedSkills,
-    };
-
-    setStaffList([...staffList, newStaff]);
-    
-    // フォームのリセット
-    setName('');
-    setEmail('');
-    setPhone(''); // リセット追加
-    setSelectedSkills([]);
-    alert('【モック動作】スタッフ情報を登録しました（後ほどDBと連携します）');
+    if (editingId !== null) {
+      // 【Update】既存スタッフデータの更新処理
+      setStaffList(prevList =>
+        prevList.map(staff =>
+          staff.id === editingId
+            ? { ...staff, name, role, email, phone, skills: selectedSkills }
+            : staff
+        )
+      );
+      alert('【モック動作】スタッフ情報を更新しました。');
+      resetForm();
+    } else {
+      // 【Create】新規スタッフ登録処理
+      const newStaff: Staff = {
+        id: staffList.length > 0 ? Math.max(...staffList.map(s => s.id)) + 1 : 1,
+        name,
+        role,
+        email,
+        phone,
+        skills: selectedSkills,
+      };
+      setStaffList([...staffList, newStaff]);
+      alert('【モック動作】スタッフ情報を登録しました。');
+      resetForm();
+    }
   };
 
-  // スタッフ削除ボタンの擬似アクション（CRUDのDeleteイメージ）
+  // 編集ボタンを押した時にデータをフォームにロードする処理
+  const handleEditClick = (staff: Staff) => {
+    setEditingId(staff.id);
+    setName(staff.name);
+    setRole(staff.role);
+    setEmail(staff.email);
+    setPhone(staff.phone);
+    setSelectedSkills(staff.skills);
+  };
+
+  // フォーム入力状態をクリアする共通処理
+  const resetForm = () => {
+    setEditingId(null);
+    setName('');
+    setRole('アルバイト');
+    setEmail('');
+    setPhone('');
+    setSelectedSkills([]);
+  };
+
+  // スタッフ削除ボタンの擬似アクション
   const handleDeleteStaff = (id: number, staffName: string) => {
     if (confirm(`${staffName} さんを削除しますか？`)) {
       setStaffList(staffList.filter(staff => staff.id !== id));
+      if (editingId === id) resetForm();
     }
   };
 
@@ -83,15 +125,17 @@ export default function StaffPage() {
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* 左側：新規スタッフ登録フォーム（Create） */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 xl:col-span-1 h-fit">
+        {/* 左側：登録 & 編集フォーム */}
+        <div className={`bg-white p-6 rounded-xl shadow-sm border transition-all h-fit xl:col-span-1 ${editingId !== null ? 'border-amber-400 ring-2 ring-amber-400/20' : 'border-gray-100'}`}>
           <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>➕</span> スタッフ新規登録
+            <span>{editingId !== null ? '✏️' : '➕'}</span> 
+            {editingId !== null ? 'スタッフ情報の編集' : 'スタッフ新規登録'}
           </h2>
           
-          <form onSubmit={handleAddStaff} className="space-y-4">
+          <form onSubmit={handleFormSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">氏名</label>
+              {/* 💡 【修正】 target.value から e.target.value に修正（以下同様） */}
               <input
                 type="text"
                 value={name}
@@ -126,7 +170,6 @@ export default function StaffPage() {
               />
             </div>
 
-            {/* 連絡先入力項目の追加 */}
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1">連絡先（電話番号）</label>
               <input
@@ -156,16 +199,27 @@ export default function StaffPage() {
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow transition-colors text-sm"
-            >
-              スタッフを登録する
-            </button>
+            <div className="flex gap-2 pt-2">
+              {editingId !== null && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-lg text-sm transition-colors"
+                >
+                  キャンセル
+                </button>
+              )}
+              <button
+                type="submit"
+                className={`flex-1 py-2.5 font-semibold rounded-lg shadow transition-colors text-sm text-white ${editingId !== null ? 'bg-amber-500 hover:bg-amber-600' : 'bg-purple-600 hover:bg-purple-700'}`}
+              >
+                {editingId !== null ? '変更を保存する' : 'スタッフを登録する'}
+              </button>
+            </div>
           </form>
         </div>
 
-        {/* 右側：スタッフ一覧（Read / Update / Delete） */}
+        {/* 右側：スタッフ一覧 */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 xl:col-span-2 overflow-hidden">
           <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>📋</span> 所属スタッフ一覧
@@ -183,7 +237,7 @@ export default function StaffPage() {
               </thead>
               <tbody className="text-sm divide-y divide-gray-100">
                 {staffList.map((staff) => (
-                  <tr key={staff.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={staff.id} className={`transition-colors ${editingId === staff.id ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-gray-50'}`}>
                     <td className="p-3">
                       <div className="font-semibold text-gray-800">{staff.name}</div>
                       <div className="text-xs text-gray-400">{staff.role}</div>
@@ -208,7 +262,7 @@ export default function StaffPage() {
                     <td className="p-3 text-center">
                       <div className="flex justify-center gap-3 text-xs">
                         <button 
-                          onClick={() => alert('【モック動作】編集用のフォームが開きます')}
+                          onClick={() => handleEditClick(staff)}
                           className="text-blue-600 hover:underline font-medium"
                         >
                           編集
