@@ -10,7 +10,7 @@ export default function ChatPage() {
   const [inputText, setInputText] = useState('');
 
   // AIが作った打診文のテンプレート
-  const aiTemplateText = "【ヘルプ要請】横浜店 店長の横浜です。急なご連絡で恐縮ですが、6/24(水)の10:00-15:00（棚卸し業務）にて、検品スキルをお持ちのスタッフ様を1名アサインいただくことは可能でしょうか？";
+  const aiTemplateText = "【ヘルプ要請】希望ヶ丘店 店長の横浜です。急なご連絡で恐縮ですが、6/24(水)の10:00-15:00（棚卸し業務）にて、検品スキルをお持ちのスタッフ様を1名アサインいただくことは可能でしょうか？";
 
   // メッセージ送信アクション
   const handleSend = (textToSend: string) => {
