@@ -138,7 +138,7 @@ export default function Dashboard() {
             <span className="px-2 py-0.5 text-xs font-bold bg-purple-100 rounded-full text-purple-700">プロトタイプ</span>
             <h1 className="text-xl font-bold tracking-tight text-gray-900">📅 AlterShift 管理コンソール</h1>
           </div>
-          <p className="text-xs text-gray-500 mt-1">対象：希望ヶ丘店 | 権限：店舗管理者</p>
+          <p className="text-xs text-gray-500 mt-1">対象：希望ヶ丘店 | 権限：横浜 店長</p>
         </div>
         
         <div className="flex gap-3 w-full sm:w-auto">
