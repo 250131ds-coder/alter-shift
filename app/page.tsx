@@ -39,14 +39,11 @@ interface Helper {
 export default function Dashboard() {
   const [currentYear] = useState(2026);
   const [currentMonth] = useState(6);
-
-  // 💡 【新機能】現在の表示「週」を管理するState（0: 第1週, 1: 第2週, 2: 第3週...）
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
   
-  // 1か月分の日付データをすべて生成
   const allDays = Array.from({ length: daysInMonth }, (_, i) => {
     const d = i + 1;
     const dateObj = new Date(currentYear, currentMonth - 1, d);
@@ -68,24 +65,25 @@ export default function Dashboard() {
     };
   });
 
-  // 💡 【新機能】1か月の日付を「7日間ずつ」の塊（週）に分割する
   const weeks: typeof allDays[] = [];
   for (let i = 0; i < allDays.length; i += 7) {
     weeks.push(allDays.slice(i, i + 7));
   }
 
-  // 💡 【新機能】現在選択されている週の7日間だけを取得
   const displayDays = weeks[currentWeekIndex] || weeks[0];
 
+  // 💡 【仕様変更】初期状態は「希望休」だけが登録されている真っ白な状態にします
   const [staffRows, setStaffRows] = useState<StaffRow[]>([
     { 
       name: '横浜 旭', 
       role: '社員', 
       shifts: allDays.reduce((acc, day) => {
-        const isWeekend = day.dayOfWeek === '土' || day.dayOfWeek === '日';
-        acc[day.key] = isWeekend
-          ? { text: '09:00-18:00', start: 9, end: 18, color: 'bg-indigo-500' }
-          : { text: '10:00-19:00', start: 10, end: 19, color: 'bg-indigo-500' };
+        // 社員の希望休：第2・第4土曜日を希望休とする
+        if (day.dayNum === 13 || day.dayNum === 27) {
+          acc[day.key] = { text: '希望休', start: 0, end: 0, color: 'bg-amber-100 text-amber-800 border-amber-300' };
+        } else {
+          acc[day.key] = { text: 'ー', start: 0, end: 0, color: '' };
+        }
         return acc;
       }, {} as { [key: string]: ShiftData })
     },
@@ -93,12 +91,13 @@ export default function Dashboard() {
       name: '山田 太郎', 
       role: 'アルバイト', 
       shifts: allDays.reduce((acc, day) => {
-        if (day.dayNum === 23) {
-          acc[day.key] = { text: '不足', start: 0, end: 0, color: '' };
-        } else if (day.dayOfWeek === '日') {
-          acc[day.key] = { text: '公休', start: 0, end: 0, color: '' };
+        // アルバイトの希望休：毎週日曜日、および23日（最初は不足にするため空欄）
+        if (day.dayOfWeek === '日') {
+          acc[day.key] = { text: '希望休', start: 0, end: 0, color: 'bg-amber-100 text-amber-800 border-amber-300' };
+        } else if (day.dayNum === 23) {
+          acc[day.key] = { text: 'ー', start: 0, end: 0, color: '' };
         } else {
-          acc[day.key] = { text: '10:00-15:00', start: 10, end: 15, color: 'bg-purple-500' };
+          acc[day.key] = { text: 'ー', start: 0, end: 0, color: '' };
         }
         return acc;
       }, {} as { [key: string]: ShiftData })
@@ -107,24 +106,24 @@ export default function Dashboard() {
       name: '佐藤 美咲', 
       role: 'パート', 
       shifts: allDays.reduce((acc, day) => {
+        // パートの希望休：毎週月曜日と水曜日
         if (day.dayOfWeek === '月' || day.dayOfWeek === '水') {
-          acc[day.key] = { text: '公休', start: 0, end: 0, color: '' };
-        } else if (day.dayOfWeek === '土' || day.dayOfWeek === '日') {
-          acc[day.key] = { text: '12:00-21:00', start: 12, end: 21, color: 'bg-pink-500' };
+          acc[day.key] = { text: '希望休', start: 0, end: 0, color: 'bg-amber-100 text-amber-800 border-amber-300' };
         } else {
-          acc[day.key] = { text: '10:00-14:00', start: 10, end: 14, color: 'bg-pink-500' };
+          acc[day.key] = { text: 'ー', start: 0, end: 0, color: '' };
         }
         return acc;
       }, {} as { [key: string]: ShiftData })
     },
   ]);
 
+  // 💡 【仕様変更】初期状態のメーター（最初はまだシフトが組まれていないので、23日以外も「未作成」状態にする）
   const [coverageMeter, setCoverageMeter] = useState<CoverageMeterState>(
     allDays.reduce((acc, day) => {
       if (day.dayNum === 23) {
         acc[day.key] = { status: '警告', label: '14-19時 不足', width: 'w-3/5', color: 'bg-red-500 animate-pulse' };
       } else {
-        acc[day.key] = { status: '充足', label: '適正', width: 'w-full', color: 'bg-green-500' };
+        acc[day.key] = { status: '未確定', label: '未配置', width: 'w-0', color: 'bg-gray-300' };
       }
       return acc;
     }, {} as CoverageMeterState)
@@ -183,7 +182,7 @@ export default function Dashboard() {
     setSelectedDayKey(null);
   };
 
-  // ドラッグ＆ドロップ用の既存処理
+  // ドラッグ＆ドロップ用処理
   const handleDragStart = (e: React.DragEvent, helperId: string) => {
     e.dataTransfer.setData('text/plain', helperId);
   };
@@ -194,11 +193,61 @@ export default function Dashboard() {
     assignHelper(helperId, dayKey);
   };
 
+  // 💡 【大幅強化】AI自動作成ボタンを押した時の1発登録ロジック
   const handleAiClick = () => {
     setIsSpinning(true);
     setTimeout(() => {
       setIsSpinning(false);
-      alert('【AI自動シフト作成】1か月分の保有スキル、過不足時間帯を計算し、最適なバー配置を行いました！');
+
+      // 1. 希望休を「公休」に変換し、空欄(ー)の場所に基本シフトを1発自動配置
+      setStaffRows(prevRows => prevRows.map(row => {
+        const updatedShifts = { ...row.shifts };
+        
+        Object.keys(updatedShifts).forEach(key => {
+          const currentShift = updatedShifts[key];
+          const dateObj = allDays.find(d => d.key === key);
+          
+          if (currentShift.text === '希望休') {
+            // 希望休は自動的に「公休」として確定させる
+            updatedShifts[key] = { text: '公休', start: 0, end: 0, color: '' };
+          } else if (currentShift.text === 'ー') {
+            // 特定の不足日(23日)の山田太郎くん以外は基本シフトで埋める
+            if (row.name === '山田 太郎' && dateObj?.dayNum === 23) {
+              updatedShifts[key] = { text: '不足', start: 0, end: 0, color: '' };
+            } else {
+              // 役職に応じた基本パターンを割り当て
+              if (row.role === '社員') {
+                const isWeekend = dateObj?.dayOfWeek === '土' || dateObj?.dayOfWeek === '日';
+                updatedShifts[key] = isWeekend
+                  ? { text: '09:00-18:00', start: 9, end: 18, color: 'bg-indigo-500' }
+                  : { text: '10:00-19:00', start: 10, end: 19, color: 'bg-indigo-500' };
+              } else if (row.role === 'アルバイト') {
+                updatedShifts[key] = { text: '10:00-15:00', start: 10, end: 15, color: 'bg-purple-500' };
+              } else if (row.role === 'パート') {
+                const isWeekend = dateObj?.dayOfWeek === '土' || dateObj?.dayOfWeek === '日';
+                updatedShifts[key] = isWeekend
+                  ? { text: '12:00-21:00', start: 12, end: 21, color: 'bg-pink-500' }
+                  : { text: '10:00-14:00', start: 10, end: 14, color: 'bg-pink-500' };
+              }
+            }
+          }
+        });
+
+        return { ...row, shifts: updatedShifts };
+      }));
+
+      // 2. メーターのステータスも一括で「適正」に更新（23日以外）
+      setCoverageMeter(prevMeter => {
+        const updatedMeter = { ...prevMeter };
+        Object.keys(updatedMeter).forEach(key => {
+          if (updatedMeter[key].status !== '警告') {
+            updatedMeter[key] = { status: '充足', label: '適正', width: 'w-full', color: 'bg-green-500' };
+          }
+        });
+        return updatedMeter;
+      });
+
+      alert('✨【AIワンクリックシフト作成完了】\n提出された希望休を全て「公休」へ自動変換し、空き日程へ必要なスキルベースの通常シフトを一括アサインしました！\n（※23日の人員不足のみ要調整として残しています）');
     }, 1200);
   };
 
@@ -224,7 +273,7 @@ export default function Dashboard() {
             className={`flex-1 sm:flex-none px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-lg transition-all shadow-md text-sm flex items-center justify-center gap-2 ${isSpinning ? 'animate-pulse opacity-70' : ''}`}
           >
             <span className={`inline-block ${isSpinning ? 'animate-spin' : ''}`}>✨</span>
-            AI自動作成
+            AI自動作成 (希望休連動)
           </button>
         </div>
       </header>
@@ -235,7 +284,7 @@ export default function Dashboard() {
         {/* 左側 1週間ガントチャート */}
         <div className="xl:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           
-          {/* 💡 【新機能】週切り替えナビゲーションバー */}
+          {/* 週切り替えナビゲーションバー */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-gray-100">
             <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
               <span>🗓️</span> 24H時間軸 シフト配置表 <span className="text-xs font-normal text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full font-bold">第 {currentWeekIndex + 1} 週目を表示中</span>
@@ -272,7 +321,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* displayDays（7日間）のみをマッピングするように修正 */}
           <div className="overflow-x-auto border border-gray-150 rounded-xl max-w-full">
             <table className="w-full min-w-[850px] border-collapse text-left text-xs table-fixed">
               <thead>
@@ -291,11 +339,11 @@ export default function Dashboard() {
                       <td key={d.key} className="p-2 px-2 text-center border-r border-gray-100">
                         <div className="space-y-1">
                           <div className="flex flex-col text-[9px] font-medium leading-tight">
-                            <span className={meter.status === '警告' ? 'text-red-600 font-bold' : 'text-gray-500'}>{meter.label}</span>
+                            <span className={meter.status === '警告' ? 'text-red-600 font-bold' : meter.status === '未確定' ? 'text-gray-400' : 'text-gray-500'}>{meter.label}</span>
                             <span className="text-[8px] text-gray-400">{meter.status}</span>
                           </div>
                           <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-                            <div className={`h-full transition-all duration-500 rounded-full ${meter.width} ${meter.color}`}></div>
+                            <div className={`h-full transition-all duration-500 rounded-full ${meter.status === '未確定' ? 'w-0' : meter.width} ${meter.color}`}></div>
                           </div>
                         </div>
                       </td>
@@ -315,6 +363,7 @@ export default function Dashboard() {
                     {displayDays.map(d => {
                       const shift = row.shifts[d.key] || { text: 'ー', start: 0, end: 0, color: '' };
                       const isBanned = shift.text === '不足';
+                      const isWishHoliday = shift.text === '希望休';
                       
                       const leftPercent = shift.start ? (shift.start / 24) * 100 : 0;
                       const widthPercent = shift.start ? ((shift.end - shift.start) / 24) * 100 : 0;
@@ -322,7 +371,7 @@ export default function Dashboard() {
                       return (
                         <td 
                           key={d.key} 
-                          className={`p-2 border-r border-gray-100 relative min-h-[65px] align-middle ${d.bg || ''} ${isBanned ? 'bg-red-50' : ''}`}
+                          className={`p-2 border-r border-gray-100 relative min-h-[65px] align-middle ${d.bg || ''} ${isBanned ? 'bg-red-50' : ''} ${isWishHoliday ? 'bg-amber-50/60' : ''}`}
                           onDragOver={isBanned ? handleDragOver : undefined}
                           onDrop={isBanned ? (e) => handleDrop(e, d.key) : undefined}
                         >
@@ -334,8 +383,13 @@ export default function Dashboard() {
                             >
                               <div className="text-[9px] font-bold text-red-600 leading-none">⚠️ クリック配置</div>
                             </div>
+                          ) : isWishHoliday ? (
+                            // 💡 希望休が視覚的に目立つデザイン
+                            <div className="text-center p-1 bg-amber-100 border border-amber-200 rounded text-amber-800 font-bold text-[10px] shadow-2xs">
+                              ⭐ 希望休
+                            </div>
                           ) : shift.text === '公休' || shift.text === 'ー' ? (
-                            <div className="text-center text-gray-300 font-medium">ー</div>
+                            <div className="text-center text-gray-300 font-medium">{shift.text}</div>
                           ) : (
                             <div className="space-y-1 py-0.5">
                               <div className="text-[9px] text-gray-700 font-medium text-center bg-white border border-gray-200 py-0.5 rounded shadow-sm truncate px-0.5">
@@ -424,7 +478,6 @@ export default function Dashboard() {
                       <strong className="text-gray-800">{targetDay?.label}</strong>
                       <span className="text-gray-500">ー {meter.label} が発生しています。</span>
                     </div>
-                    {/* 💡 【新機能改善】別週の警告だった場合、自動でその週へジャンプしてポップアップを開く */}
                     <button 
                       onClick={() => {
                         const targetWeekIdx = weeks.findIndex(w => w.some(d => d.key === key));
