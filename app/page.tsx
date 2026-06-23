@@ -40,10 +40,14 @@ export default function Dashboard() {
   const [currentYear] = useState(2026);
   const [currentMonth] = useState(6);
 
+  // 💡 【新機能】現在の表示「週」を管理するState（0: 第1週, 1: 第2週, 2: 第3週...）
+  const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
+
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
   
-  const days = Array.from({ length: daysInMonth }, (_, i) => {
+  // 1か月分の日付データをすべて生成
+  const allDays = Array.from({ length: daysInMonth }, (_, i) => {
     const d = i + 1;
     const dateObj = new Date(currentYear, currentMonth - 1, d);
     const dayOfWeekNum = dateObj.getDay();
@@ -64,11 +68,20 @@ export default function Dashboard() {
     };
   });
 
+  // 💡 【新機能】1か月の日付を「7日間ずつ」の塊（週）に分割する
+  const weeks: typeof allDays[] = [];
+  for (let i = 0; i < allDays.length; i += 7) {
+    weeks.push(allDays.slice(i, i + 7));
+  }
+
+  // 💡 【新機能】現在選択されている週の7日間だけを取得
+  const displayDays = weeks[currentWeekIndex] || weeks[0];
+
   const [staffRows, setStaffRows] = useState<StaffRow[]>([
     { 
       name: '横浜 旭', 
       role: '社員', 
-      shifts: days.reduce((acc, day) => {
+      shifts: allDays.reduce((acc, day) => {
         const isWeekend = day.dayOfWeek === '土' || day.dayOfWeek === '日';
         acc[day.key] = isWeekend
           ? { text: '09:00-18:00', start: 9, end: 18, color: 'bg-indigo-500' }
@@ -79,7 +92,7 @@ export default function Dashboard() {
     { 
       name: '山田 太郎', 
       role: 'アルバイト', 
-      shifts: days.reduce((acc, day) => {
+      shifts: allDays.reduce((acc, day) => {
         if (day.dayNum === 23) {
           acc[day.key] = { text: '不足', start: 0, end: 0, color: '' };
         } else if (day.dayOfWeek === '日') {
@@ -93,7 +106,7 @@ export default function Dashboard() {
     { 
       name: '佐藤 美咲', 
       role: 'パート', 
-      shifts: days.reduce((acc, day) => {
+      shifts: allDays.reduce((acc, day) => {
         if (day.dayOfWeek === '月' || day.dayOfWeek === '水') {
           acc[day.key] = { text: '公休', start: 0, end: 0, color: '' };
         } else if (day.dayOfWeek === '土' || day.dayOfWeek === '日') {
@@ -107,7 +120,7 @@ export default function Dashboard() {
   ]);
 
   const [coverageMeter, setCoverageMeter] = useState<CoverageMeterState>(
-    days.reduce((acc, day) => {
+    allDays.reduce((acc, day) => {
       if (day.dayNum === 23) {
         acc[day.key] = { status: '警告', label: '14-19時 不足', width: 'w-3/5', color: 'bg-red-500 animate-pulse' };
       } else {
@@ -124,12 +137,12 @@ export default function Dashboard() {
   
   const [isSpinning, setIsSpinning] = useState(false);
 
-  // 🛠️ ポップアップ（モーダル）用の管理Stateを追加
+  // ポップアップ（モーダル）用の管理State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [selectedDayLabel, setSelectedDayLabel] = useState<string>('');
 
-  // 🛠️ 人員を実際に配置する共通ロジック
+  // 人員を実際に配置する共通ロジック
   const assignHelper = (helperId: string, dayKey: string) => {
     const droppedHelper = availableHelpers.find(h => h.id === helperId);
 
@@ -158,7 +171,7 @@ export default function Dashboard() {
     }
   };
 
-  // 🛠️ 不足マスをクリックした時の処理
+  // 不足マスをクリックした時の処理
   const handleCellClick = (dayKey: string, dayLabel: string) => {
     setSelectedDayKey(dayKey);
     setSelectedDayLabel(dayLabel);
@@ -170,7 +183,7 @@ export default function Dashboard() {
     setSelectedDayKey(null);
   };
 
-  // ドラッグ＆ドロップ用の既存処理（残しつつミス防止のポップアップと共存）
+  // ドラッグ＆ドロップ用の既存処理
   const handleDragStart = (e: React.DragEvent, helperId: string) => {
     e.dataTransfer.setData('text/plain', helperId);
   };
@@ -219,27 +232,60 @@ export default function Dashboard() {
       {/* メインレイアウト */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         
-        {/* 左側 1か月ガントチャート */}
+        {/* 左側 1週間ガントチャート */}
         <div className="xl:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-6">
+          
+          {/* 💡 【新機能】週切り替えナビゲーションバー */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-gray-100">
             <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-              <span>🗓️</span> 24H時間軸 1か月ガントチャート配置表 <span className="text-xs font-normal text-gray-400">（横スクロール可能）</span>
+              <span>🗓️</span> 24H時間軸 シフト配置表 <span className="text-xs font-normal text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full font-bold">第 {currentWeekIndex + 1} 週目を表示中</span>
             </h2>
+            
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                disabled={currentWeekIndex === 0}
+                onClick={() => setCurrentWeekIndex(prev => prev - 1)}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+              >
+                ← 前の週
+              </button>
+              
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                {weeks.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentWeekIndex(idx)}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${currentWeekIndex === idx ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+                  >
+                    {idx + 1}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                disabled={currentWeekIndex === weeks.length - 1}
+                onClick={() => setCurrentWeekIndex(prev => prev + 1)}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+              >
+                次の週 →
+              </button>
+            </div>
           </div>
 
+          {/* displayDays（7日間）のみをマッピングするように修正 */}
           <div className="overflow-x-auto border border-gray-150 rounded-xl max-w-full">
-            <table className="w-full min-w-[2800px] border-collapse text-left text-xs table-fixed">
+            <table className="w-full min-w-[850px] border-collapse text-left text-xs table-fixed">
               <thead>
                 <tr className="border-b border-gray-200 text-gray-500 font-semibold text-[11px] tracking-wider bg-gray-50/70">
                   <th className="p-3 w-36 bg-gray-150 sticky left-0 z-20 border-r border-gray-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">スタッフ名</th>
-                  {days.map(d => (
+                  {displayDays.map(d => (
                     <th key={d.key} className={`p-2.5 text-center w-24 border-r border-gray-100 ${d.bg || ''}`}>{d.label}</th>
                   ))}
                 </tr>
                 
                 <tr className="border-b border-gray-200 bg-gray-50/30">
                   <td className="p-2.5 font-bold text-gray-400 sticky left-0 bg-gray-100 z-20 border-r border-gray-200 text-[10px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">過不足状況</td>
-                  {days.map(d => {
+                  {displayDays.map(d => {
                     const meter = coverageMeter[d.key] || { status: '充足', label: '適正', width: 'w-full', color: 'bg-green-500' };
                     return (
                       <td key={d.key} className="p-2 px-2 text-center border-r border-gray-100">
@@ -266,7 +312,7 @@ export default function Dashboard() {
                       <div className="text-[9px] text-gray-400 font-normal mt-0.5">{row.role}</div>
                     </td>
 
-                    {days.map(d => {
+                    {displayDays.map(d => {
                       const shift = row.shifts[d.key] || { text: 'ー', start: 0, end: 0, color: '' };
                       const isBanned = shift.text === '不足';
                       
@@ -281,7 +327,6 @@ export default function Dashboard() {
                           onDrop={isBanned ? (e) => handleDrop(e, d.key) : undefined}
                         >
                           {isBanned ? (
-                            // 💡 【改善】ドラッグ＆ドロップに加え、クリックでポップアップが開くようにイベントを追加
                             <div 
                               onClick={() => handleCellClick(d.key, d.label)}
                               className="border border-dashed border-red-400 rounded-lg p-1 py-2 bg-white text-center animate-pulse cursor-pointer shadow-sm hover:bg-red-100 hover:border-red-500 transition-colors"
@@ -367,12 +412,11 @@ export default function Dashboard() {
               🎉 現在、シフトの過不足はありません。すべての時間帯が充足しています。
             </div>
           ) : (
-            // 💡 Object.keysでループを回し、配列の分割代入から「_」を完全に排除しました
             Object.keys(coverageMeter)
               .filter((key) => coverageMeter[key].status === '警告')
               .map((key) => {
                 const meter = coverageMeter[key];
-                const targetDay = days.find((d) => d.key === key);
+                const targetDay = allDays.find((d) => d.key === key);
                 return (
                   <div key={key} className="py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div className="flex items-center gap-2">
@@ -380,11 +424,16 @@ export default function Dashboard() {
                       <strong className="text-gray-800">{targetDay?.label}</strong>
                       <span className="text-gray-500">ー {meter.label} が発生しています。</span>
                     </div>
+                    {/* 💡 【新機能改善】別週の警告だった場合、自動でその週へジャンプしてポップアップを開く */}
                     <button 
-                      onClick={() => handleCellClick(key, targetDay?.label || '')}
+                      onClick={() => {
+                        const targetWeekIdx = weeks.findIndex(w => w.some(d => d.key === key));
+                        if (targetWeekIdx !== -1) setCurrentWeekIndex(targetWeekIdx);
+                        handleCellClick(key, targetDay?.label || '');
+                      }}
                       className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md text-[11px] transition-colors shadow-sm"
                     >
-                      ⚡ この日を解決する
+                      ⚡ この週に移動して解決
                     </button>
                   </div>
                 );
@@ -393,9 +442,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 💡 【新機能】人員配置用のポップアップ（モーダルウィンドウ） */}
+      {/* 人員配置用のポップアップ（モーダルウィンドウ） */}
       {isModalOpen && selectedDayKey && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md overflow-hidden transform transition-all">
             <div className="bg-gradient-to-r from-purple-700 to-indigo-700 p-4 text-white">
               <div className="flex justify-between items-center">
