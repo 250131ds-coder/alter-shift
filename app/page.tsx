@@ -72,13 +72,20 @@ export default function Dashboard() {
 
   const displayDays = weeks[currentWeekIndex] || weeks[0];
 
-  // 💡 【仕様変更】初期状態は「希望休」だけが登録されている真っ白な状態にします
+  // 📌 店舗イベントデータ
+  const storeEvents: { [dateStr: string]: string } = {
+    '2026-06-10': '新商品入荷',
+    '2026-06-15': '店舗ミーティング',
+    '2026-06-23': '全体棚卸し業務',
+    '2026-06-24': '他店合同研修',
+  };
+
+  // 初期状態（希望休のみ登録）
   const [staffRows, setStaffRows] = useState<StaffRow[]>([
     { 
       name: '横浜 旭', 
       role: '社員', 
       shifts: allDays.reduce((acc, day) => {
-        // 社員の希望休：第2・第4土曜日を希望休とする
         if (day.dayNum === 13 || day.dayNum === 27) {
           acc[day.key] = { text: '希望休', start: 0, end: 0, color: 'bg-amber-100 text-amber-800 border-amber-300' };
         } else {
@@ -91,7 +98,6 @@ export default function Dashboard() {
       name: '山田 太郎', 
       role: 'アルバイト', 
       shifts: allDays.reduce((acc, day) => {
-        // アルバイトの希望休：毎週日曜日、および23日（最初は不足にするため空欄）
         if (day.dayOfWeek === '日') {
           acc[day.key] = { text: '希望休', start: 0, end: 0, color: 'bg-amber-100 text-amber-800 border-amber-300' };
         } else if (day.dayNum === 23) {
@@ -106,7 +112,6 @@ export default function Dashboard() {
       name: '佐藤 美咲', 
       role: 'パート', 
       shifts: allDays.reduce((acc, day) => {
-        // パートの希望休：毎週月曜日と水曜日
         if (day.dayOfWeek === '月' || day.dayOfWeek === '水') {
           acc[day.key] = { text: '希望休', start: 0, end: 0, color: 'bg-amber-100 text-amber-800 border-amber-300' };
         } else {
@@ -117,7 +122,7 @@ export default function Dashboard() {
     },
   ]);
 
-  // 💡 【仕様変更】初期状態のメーター（最初はまだシフトが組まれていないので、23日以外も「未作成」状態にする）
+  // 初期状態のメーター
   const [coverageMeter, setCoverageMeter] = useState<CoverageMeterState>(
     allDays.reduce((acc, day) => {
       if (day.dayNum === 23) {
@@ -193,13 +198,12 @@ export default function Dashboard() {
     assignHelper(helperId, dayKey);
   };
 
-  // 💡 【大幅強化】AI自動作成ボタンを押した時の1発登録ロジック
+  // AI自動作成
   const handleAiClick = () => {
     setIsSpinning(true);
     setTimeout(() => {
       setIsSpinning(false);
 
-      // 1. 希望休を「公休」に変換し、空欄(ー)の場所に基本シフトを1発自動配置
       setStaffRows(prevRows => prevRows.map(row => {
         const updatedShifts = { ...row.shifts };
         
@@ -208,14 +212,11 @@ export default function Dashboard() {
           const dateObj = allDays.find(d => d.key === key);
           
           if (currentShift.text === '希望休') {
-            // 希望休は自動的に「公休」として確定させる
             updatedShifts[key] = { text: '公休', start: 0, end: 0, color: '' };
           } else if (currentShift.text === 'ー') {
-            // 特定の不足日(23日)の山田太郎くん以外は基本シフトで埋める
             if (row.name === '山田 太郎' && dateObj?.dayNum === 23) {
               updatedShifts[key] = { text: '不足', start: 0, end: 0, color: '' };
             } else {
-              // 役職に応じた基本パターンを割り当て
               if (row.role === '社員') {
                 const isWeekend = dateObj?.dayOfWeek === '土' || dateObj?.dayOfWeek === '日';
                 updatedShifts[key] = isWeekend
@@ -236,7 +237,6 @@ export default function Dashboard() {
         return { ...row, shifts: updatedShifts };
       }));
 
-      // 2. メーターのステータスも一括で「適正」に更新（23日以外）
       setCoverageMeter(prevMeter => {
         const updatedMeter = { ...prevMeter };
         Object.keys(updatedMeter).forEach(key => {
@@ -353,6 +353,27 @@ export default function Dashboard() {
               </thead>
               
               <tbody className="divide-y divide-gray-100">
+                {/* 📌 店舗イベント行（animate-pulse を削除して点滅を抑止） */}
+                <tr className="bg-amber-50/40 hover:bg-amber-50/70 transition-colors border-b border-gray-200">
+                  <td className="p-3 font-bold text-amber-800 bg-amber-50/80 sticky left-0 z-20 border-r border-gray-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)] flex items-center gap-1">
+                    🚩 店舗イベント
+                  </td>
+                  {displayDays.map(d => {
+                    const eventName = storeEvents[d.key];
+                    return (
+                      <td key={d.key} className={`p-2 border-r border-gray-100 text-center align-middle ${d.bg || ''}`}>
+                        {eventName ? (
+                          <div className="px-2 py-1 bg-amber-500 text-white font-extrabold text-[10px] rounded-md shadow-xs truncate" title={eventName}>
+                            {eventName}
+                          </div>
+                        ) : (
+                          <span className="text-gray-300 font-normal">ー</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+
                 {staffRows.map((row, idx) => (
                   <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
                     <td className="p-3 font-medium text-gray-800 sticky left-0 bg-white z-20 border-r border-gray-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
@@ -384,7 +405,6 @@ export default function Dashboard() {
                               <div className="text-[9px] font-bold text-red-600 leading-none">⚠️ クリック配置</div>
                             </div>
                           ) : isWishHoliday ? (
-                            // 💡 希望休が視覚的に目立つデザイン
                             <div className="text-center p-1 bg-amber-100 border border-amber-200 rounded text-amber-800 font-bold text-[10px] shadow-2xs">
                               ⭐ 希望休
                             </div>
