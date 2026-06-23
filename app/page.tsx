@@ -356,21 +356,23 @@ export default function Dashboard() {
 
       </div>
 
-      {/* 💡 【新機能】下部：シフト不足警告ログパネル */}
+      {/* 下部：シフト不足警告ログパネル */}
       <div className="mt-6 bg-white p-5 rounded-xl shadow-sm border border-red-100">
         <h3 className="text-sm font-bold text-red-700 flex items-center gap-2 mb-3">
           <span>🚨</span> 現在検出されている人員不足・アラート（下部警告）
         </h3>
         <div className="divide-y divide-gray-100 text-xs">
-          {Object.entries(coverageMeter).filter(([_, m]) => m.status === '警告').length === 0 ? (
+          {Object.values(coverageMeter).filter((m) => m.status === '警告').length === 0 ? (
             <div className="text-gray-500 py-2 text-center font-medium bg-green-50 rounded-lg border border-green-100 text-green-700">
               🎉 現在、シフトの過不足はありません。すべての時間帯が充足しています。
             </div>
           ) : (
-            Object.entries(coverageMeter)
-              .filter(([_, m]) => m.status === '警告')
-              .map(([key, meter]) => {
-                const targetDay = days.find(d => d.key === key);
+            // 💡 Object.keysでループを回し、配列の分割代入から「_」を完全に排除しました
+            Object.keys(coverageMeter)
+              .filter((key) => coverageMeter[key].status === '警告')
+              .map((key) => {
+                const meter = coverageMeter[key];
+                const targetDay = days.find((d) => d.key === key);
                 return (
                   <div key={key} className="py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div className="flex items-center gap-2">
@@ -378,7 +380,6 @@ export default function Dashboard() {
                       <strong className="text-gray-800">{targetDay?.label}</strong>
                       <span className="text-gray-500">ー {meter.label} が発生しています。</span>
                     </div>
-                    {/* 警告ログからも直接ワンクリックでポップアップを呼び出せる親切仕様 */}
                     <button 
                       onClick={() => handleCellClick(key, targetDay?.label || '')}
                       className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md text-[11px] transition-colors shadow-sm"
