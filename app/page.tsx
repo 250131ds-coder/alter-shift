@@ -16,7 +16,6 @@ interface StaffRow {
   shifts: { [dateStr: string]: ShiftData };
 }
 
-// 💡 メーターデータ用の型定義を追加
 interface MeterData {
   status: string;
   label: string;
@@ -28,12 +27,19 @@ interface CoverageMeterState {
   [dateStr: string]: MeterData;
 }
 
+interface Helper {
+  id: string;
+  name: string;
+  time: string;
+  start: number;
+  end: number;
+  skill: string;
+}
+
 export default function Dashboard() {
-  // 現在は2026年6月をベースとして固定デモ
   const [currentYear] = useState(2026);
   const [currentMonth] = useState(6);
 
-  // 6月の末日（30日）分の日付データを自動生成
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
   
@@ -58,7 +64,6 @@ export default function Dashboard() {
     };
   });
 
-  // 初期スタッフデータ
   const [staffRows, setStaffRows] = useState<StaffRow[]>([
     { 
       name: '横浜 旭', 
@@ -101,7 +106,6 @@ export default function Dashboard() {
     },
   ]);
 
-  // 🛠️ 【修正箇所】any型を排除し、定義した型アサーションを明記
   const [coverageMeter, setCoverageMeter] = useState<CoverageMeterState>(
     days.reduce((acc, day) => {
       if (day.dayNum === 23) {
@@ -113,32 +117,20 @@ export default function Dashboard() {
     }, {} as CoverageMeterState)
   );
 
-  const [availableHelpers, setAvailableHelpers] = useState([
+  const [availableHelpers, setAvailableHelpers] = useState<Helper[]>([
     { id: 'helper-1', name: '鈴木 一郎', time: '13:00 - 18:00', start: 13, end: 18, skill: '検品持ち' },
     { id: 'helper-2', name: '田中 次郎', time: '10:00 - 16:00', start: 10, end: 16, skill: 'レジのみ' },
   ]);
   
   const [isSpinning, setIsSpinning] = useState(false);
 
-  const handleAiClick = () => {
-    setIsSpinning(true);
-    setTimeout(() => {
-      setIsSpinning(false);
-      alert('【AI自動シフト作成】1か月分の保有スキル、過不足時間帯を計算し、最適なバー配置を行いました！');
-    }, 1200);
-  };
+  // 🛠️ ポップアップ（モーダル）用の管理Stateを追加
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const [selectedDayLabel, setSelectedDayLabel] = useState<string>('');
 
-  const handleDragStart = (e: React.DragEvent, helperId: string) => {
-    e.dataTransfer.setData('text/plain', helperId);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent, dayKey: string) => {
-    e.preventDefault();
-    const helperId = e.dataTransfer.getData('text/plain');
+  // 🛠️ 人員を実際に配置する共通ロジック
+  const assignHelper = (helperId: string, dayKey: string) => {
     const droppedHelper = availableHelpers.find(h => h.id === helperId);
 
     if (droppedHelper) {
@@ -161,12 +153,44 @@ export default function Dashboard() {
         [dayKey]: { status: '充足', label: '適正', width: 'w-full', color: 'bg-green-500' }
       }));
 
-      alert(`🎉 UX連動成功！\n${droppedHelper.name}さんを配置し、対象日の「人数不足警告」を解除しました。`);
+      alert(`🎉 配置に成功しました！\n${droppedHelper.name}さんを配置し、「人数不足警告」を解除しました。`);
+      closeModal();
     }
   };
 
+  // 🛠️ 不足マスをクリックした時の処理
+  const handleCellClick = (dayKey: string, dayLabel: string) => {
+    setSelectedDayKey(dayKey);
+    setSelectedDayLabel(dayLabel);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedDayKey(null);
+  };
+
+  // ドラッグ＆ドロップ用の既存処理（残しつつミス防止のポップアップと共存）
+  const handleDragStart = (e: React.DragEvent, helperId: string) => {
+    e.dataTransfer.setData('text/plain', helperId);
+  };
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+  const handleDrop = (e: React.DragEvent, dayKey: string) => {
+    e.preventDefault();
+    const helperId = e.dataTransfer.getData('text/plain');
+    assignHelper(helperId, dayKey);
+  };
+
+  const handleAiClick = () => {
+    setIsSpinning(true);
+    setTimeout(() => {
+      setIsSpinning(false);
+      alert('【AI自動シフト作成】1か月分の保有スキル、過不足時間帯を計算し、最適なバー配置を行いました！');
+    }, 1200);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6 text-gray-800 antialiased">
+    <div className="min-h-screen bg-gray-50 p-6 text-gray-800 antialiased relative">
       
       {/* ヘッダー */}
       <header className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -199,7 +223,7 @@ export default function Dashboard() {
         <div className="xl:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-              <span>🗓️</span> 24H時間軸 1か月ガントチャート配置表 <span className="text-xs font-normal text-gray-400">（横にスクロールして全日確認できます）</span>
+              <span>🗓️</span> 24H時間軸 1か月ガントチャート配置表 <span className="text-xs font-normal text-gray-400">（横スクロール可能）</span>
             </h2>
           </div>
 
@@ -257,8 +281,13 @@ export default function Dashboard() {
                           onDrop={isBanned ? (e) => handleDrop(e, d.key) : undefined}
                         >
                           {isBanned ? (
-                            <div className="border border-dashed border-red-400 rounded-lg p-1 py-2 bg-white text-center animate-pulse cursor-pointer shadow-sm">
-                              <div className="text-[9px] font-bold text-red-600 leading-none">🖱️ ドロップ</div>
+                            // 💡 【改善】ドラッグ＆ドロップに加え、クリックでポップアップが開くようにイベントを追加
+                            <div 
+                              onClick={() => handleCellClick(d.key, d.label)}
+                              className="border border-dashed border-red-400 rounded-lg p-1 py-2 bg-white text-center animate-pulse cursor-pointer shadow-sm hover:bg-red-100 hover:border-red-500 transition-colors"
+                              title="クリックして人員を配置"
+                            >
+                              <div className="text-[9px] font-bold text-red-600 leading-none">⚠️ クリック配置</div>
                             </div>
                           ) : shift.text === '公休' || shift.text === 'ー' ? (
                             <div className="text-center text-gray-300 font-medium">ー</div>
@@ -292,7 +321,7 @@ export default function Dashboard() {
               <span>🖱️</span> 応援候補スタンド
             </h3>
             <p className="text-[10px] text-gray-400 mt-1">
-              左側の赤い「不足」マスへドラッグ＆ドロップしてください。
+              ドラッグ＆ドロップ、または不足マスを直接クリックして配置できます。
             </p>
           </div>
           
@@ -326,6 +355,102 @@ export default function Dashboard() {
         </div>
 
       </div>
+
+      {/* 💡 【新機能】下部：シフト不足警告ログパネル */}
+      <div className="mt-6 bg-white p-5 rounded-xl shadow-sm border border-red-100">
+        <h3 className="text-sm font-bold text-red-700 flex items-center gap-2 mb-3">
+          <span>🚨</span> 現在検出されている人員不足・アラート（下部警告）
+        </h3>
+        <div className="divide-y divide-gray-100 text-xs">
+          {Object.entries(coverageMeter).filter(([_, m]) => m.status === '警告').length === 0 ? (
+            <div className="text-gray-500 py-2 text-center font-medium bg-green-50 rounded-lg border border-green-100 text-green-700">
+              🎉 現在、シフトの過不足はありません。すべての時間帯が充足しています。
+            </div>
+          ) : (
+            Object.entries(coverageMeter)
+              .filter(([_, m]) => m.status === '警告')
+              .map(([key, meter]) => {
+                const targetDay = days.find(d => d.key === key);
+                return (
+                  <div key={key} className="py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-red-100 text-red-700 font-bold rounded text-[10px]">人員不足</span>
+                      <strong className="text-gray-800">{targetDay?.label}</strong>
+                      <span className="text-gray-500">ー {meter.label} が発生しています。</span>
+                    </div>
+                    {/* 警告ログからも直接ワンクリックでポップアップを呼び出せる親切仕様 */}
+                    <button 
+                      onClick={() => handleCellClick(key, targetDay?.label || '')}
+                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-md text-[11px] transition-colors shadow-sm"
+                    >
+                      ⚡ この日を解決する
+                    </button>
+                  </div>
+                );
+              })
+          )}
+        </div>
+      </div>
+
+      {/* 💡 【新機能】人員配置用のポップアップ（モーダルウィンドウ） */}
+      {isModalOpen && selectedDayKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-md overflow-hidden transform transition-all">
+            <div className="bg-gradient-to-r from-purple-700 to-indigo-700 p-4 text-white">
+              <div className="flex justify-between items-center">
+                <h4 className="font-bold text-sm flex items-center gap-1.5">
+                  <span>📌</span> 応援スタッフの手動配置
+                </h4>
+                <button 
+                  onClick={closeModal} 
+                  className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-[11px] text-purple-100 mt-1">
+                対象日：<strong className="text-white underline">{selectedDayLabel}</strong> (不足時間帯の補填)
+              </p>
+            </div>
+
+            <div className="p-5">
+              <label className="block text-xs font-bold text-gray-500 mb-3">配置可能な応援スタッフ候補</label>
+              
+              <div className="space-y-2.5 max-h-[250px] overflow-y-auto pr-1">
+                {availableHelpers.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-gray-400 italic">
+                    現在、アサイン可能な応援候補スタッフがいません。
+                  </div>
+                ) : (
+                  availableHelpers.map(helper => (
+                    <div key={helper.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center gap-2">
+                      <div>
+                        <div className="font-bold text-xs text-gray-800">{helper.name} <span className="text-[9px] text-purple-600 bg-purple-50 px-1 py-0.2 rounded border border-purple-100 ml-1">{helper.skill}</span></div>
+                        <div className="text-[10px] text-gray-500 mt-1">希望時間: {helper.time}</div>
+                      </div>
+                      <button
+                        onClick={() => assignHelper(helper.id, selectedDayKey)}
+                        className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold rounded-md transition-colors shadow-xs"
+                      >
+                        配置する
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button 
+                  onClick={closeModal} 
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-lg text-xs transition-colors"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* フッターナビゲーション */}
       <footer className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
