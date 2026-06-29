@@ -12,50 +12,86 @@ model Staff {
   id        Int          @id @default(autoincrement())
   name      String
   role      String
-  contact   String?
+  email     String?      // @default(null) は暗黙的にNULL許容
+  phone     String?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
-  skills    StaffSkill[]
-  shifts    Shift[]      // 追加：シフトとのリレーション
+  skills    StaffSkill[] // StaffSkill 中間テーブルへのリレーション
+  shifts    Shift[]      // Shift テーブルへのリレーション
 }
 
 // 2. スキルマスタテーブル
 model Skill {
-  id        Int          @id @default(autoincrement())
-  name      String       @unique
-  createdAt DateTime     @default(now())
-  staffs    StaffSkill[]
+  id                        Int                        @id @default(autoincrement())
+  name                      String                     @unique(map: "Skill_name_unique")
+  createdAt                 DateTime                   @default(now())
+  staffs                    StaffSkill[]               // StaffSkill 中間テーブルへのリレーション
+  eventTemplateRequirements EventTemplateRequirement[] // 必要人数テーブルへのリレーション
 }
 
-// 3. 【中間テーブル】スタッフ ⇄ スキル
+// 3. スタッフ ⇄ スキル 中間テーブル
 model StaffSkill {
   staffId Int
   skillId Int
   staff   Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
   skill   Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
-  @@id([staffId, skillId])
+  @@id([staffId, skillId]) // 複合主キー
 }
 
-// ★追加：4. 店舗イベントテーブル
+// 4. イベントテンプレートテーブル
+model EventTemplate {
+  id           Int                        @id @default(autoincrement())
+  name         String                     @unique(map: "EventTemplate_name_unique")
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  requirements EventTemplateRequirement[] // 必要人数テーブルへのリレーション
+  storeEvents  StoreEvent[]               // 店舗イベントへのリレーション
+}
+
+// 5. イベントテンプレート必要人数テーブル
+model EventTemplateRequirement {
+  templateId Int
+  skillId    Int
+  count      Int           @default(1)
+  template   EventTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  skill      Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, skillId]) // 複合主キー
+}
+
+// 6. 店舗イベントテーブル
 model StoreEvent {
-  id        Int      @id @default(autoincrement())
-  date      DateTime @unique // 1日1イベントに制限
-  title     String
-  createdAt DateTime @default(now())
+  id         Int            @id @default(autoincrement())
+  date       DateTime       @unique(map: "StoreEvent_date_unique") @db.Date // MySQLのDATE型に指定
+  title      String
+  templateId Int?
+  createdAt  DateTime       @default(now())
+  template   EventTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 }
 
-// ★追加：5. 日別シフトテーブル
+// 7. 日別シフトテーブル
 model Shift {
   id        Int      @id @default(autoincrement())
   staffId   Int
-  date      DateTime
-  type      String   // '通常', '希望休', '公休' など
-  startTime Int      @default(0)
-  endTime   Int      @default(0)
-  comment   String?
+  date      DateTime @db.Date // MySQLのDATE型に指定
+  type      String
+  startTime Int?     // NULL許容
+  endTime   Int?     // NULL許容
+  comment   String?  @db.Text // MySQLのTEXT型に指定
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, date], map: "Shift_staffId_date_unique") // 1日1マス保証の複合ユニーク
+}
+
+// 8. ヘルプ相談チャットテーブル
+model HelpChat {
+  id        Int      @id @default(autoincrement())
+  fromStore String
+  toStore   String?
+  message   String   @db.Text // MySQLのTEXT型に指定
+  isAi      Boolean  @default(false) // TINYINT(1)をBooleanとして扱う
+  sentAt    DateTime @default(now())
 }
