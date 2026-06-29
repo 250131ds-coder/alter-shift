@@ -1,0 +1,47 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. スタッフテーブル
+model Staff {
+  id        Int          @id @default(autoincrement())
+  name      String       // 氏名 (例: 山田 太郎)
+  role      String       // 役職 (例: アルバイト、社員)
+  contact   String?      // 連絡先 (任意入力)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // スキルとの多対多のリレーション関係
+  skills    StaffSkill[]
+}
+
+// 2. スキルマスタテーブル (レジ、検品、ホール、キッチンなど)
+model Skill {
+  id        Int          @id @default(autoincrement())
+  name      String       @unique // スキル名 (重複不可)
+  createdAt DateTime     @default(now())
+
+  // スタッフとの多対多のリレーション関係
+  staffs    StaffSkill[]
+}
+
+// 3. 【中間テーブル】スタッフ ⇄ スキル
+// ユーザーが自由にスキルを登録・紐付けできるようにするための、リレーションの要です
+model StaffSkill {
+  staffId Int
+  skillId Int
+
+  // 外部キーの関連付け
+  staff   Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  skill   Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  // 複合主キー（同じスタッフに同じスキルを2重登録できないようにする）
+  @@id([staffId, skillId])
+}
