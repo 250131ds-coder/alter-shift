@@ -7,14 +7,14 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// 1. 店舗テーブル ★新規追加
+// 1. 店舗テーブル
 model Store {
   id               Int               @id @default(autoincrement())
   name             String
-  areaName         String?
-  managerName      String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  areaName         String?           @map("area_name")
+  managerName      String?           @map("manager_name")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
   staffs           Staff[]
   eventTemplates   EventTemplate[]
   storeEvents      StoreEvent[]
@@ -22,133 +22,150 @@ model Store {
   helpChatsFrom    HelpChat[]        @relation("FromStore")
   helpChatsTo      HelpChat[]        @relation("ToStore")
   aiGenerationLogs AiGenerationLog[]
+
+  @@map("store")
 }
 
 // 2. スタッフテーブル
 model Staff {
   id        Int          @id @default(autoincrement())
-  storeId   Int
+  storeId   Int          @map("store_id")
   name      String
   role      String
   email     String?
   phone     String?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
   store     Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
   skills    StaffSkill[]
   shifts    Shift[]
+
+  @@map("staff")
 }
 
 // 3. スキルマスタテーブル
 model Skill {
   id                        Int                        @id @default(autoincrement())
-  name                      String                     @unique(map: "Skill_name_unique")
-  createdAt                 DateTime                   @default(now())
+  name                      String                     @unique(map: "skill_store_id_name_unique")
+  createdAt                 DateTime                   @default(now()) @map("created_at")
   staffs                    StaffSkill[]
   eventTemplateRequirements EventTemplateRequirement[]
+
+  @@map("skill")
 }
 
 // 4. スタッフ ⇄ スキル 中間テーブル
 model StaffSkill {
-  staffId Int
-  skillId Int
+  staffId Int   @map("staff_id")
+  skillId Int   @map("skill_id")
   staff   Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
   skill   Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@id([staffId, skillId])
+  @@map("staff_skill")
 }
 
 // 5. イベントテンプレートテーブル
 model EventTemplate {
   id           Int                        @id @default(autoincrement())
-  storeId      Int
+  storeId      Int                        @map("store_id")
   name         String
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
+  createdAt    DateTime                   @default(now()) @map("created_at")
+  updatedAt    DateTime                   @updatedAt @map("updated_at")
   store        Store                      @relation(fields: [storeId], references: [id], onDelete: Cascade)
   requirements EventTemplateRequirement[]
   storeEvents  StoreEvent[]
 
-  @@unique([storeId, name], map: "EventTemplate_storeId_name_unique")
+  @@unique([storeId, name], map: "event_template_store_id_name_unique")
+  @@map("event_template")
 }
 
 // 6. イベントテンプレート必要人数テーブル
 model EventTemplateRequirement {
-  templateId Int
-  skillId    Int
+  templateId Int           @map("template_id")
+  skillId    Int           @map("skill_id")
   count      Int           @default(1)
   template   EventTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   skill      Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@id([templateId, skillId])
+  @@map("event_template_requirement")
 }
 
 // 7. 店舗イベントテーブル
 model StoreEvent {
   id         Int            @id @default(autoincrement())
-  storeId    Int
+  storeId    Int            @map("store_id")
   date       DateTime       @db.Date
   title      String
-  templateId Int?
-  createdAt  DateTime       @default(now())
+  templateId Int?           @map("template_id")
+  createdAt  DateTime       @default(now()) @map("created_at")
   store      Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   template   EventTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
-  @@unique([storeId, date, title], map: "StoreEvent_storeId_date_title_unique")
+  @@unique([storeId, date, title], map: "store_event_store_date_title_unique")
+  @@map("store_event")
 }
 
 // 8. 日別シフトテーブル
 model Shift {
   id            Int            @id @default(autoincrement())
-  storeId       Int
-  staffId       Int
+  storeId       Int            @map("store_id")
+  staffId       Int            @map("staff_id")
   date          DateTime       @db.Date
   type          String
-  startTime     DateTime?      @db.Time
-  endTime       DateTime?      @db.Time
+  startTime     DateTime?      @db.Time @map("start_time")
+  endTime       DateTime?      @db.Time @map("end_time")
   status        String         @default("draft")
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
   store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   staff         Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
   shiftComments ShiftComment[]
 
-  @@unique([staffId, date], map: "Shift_staffId_date_unique")
+  @@unique([staffId, date], map: "shift_staff_id_date_unique")
+  @@map("shift")
 }
 
-// 9. シフトコメントテーブル ★新規追加
+// 9. シフトコメントテーブル
 model ShiftComment {
   id        Int      @id @default(autoincrement())
-  shiftId   Int
+  shiftId   Int      @map("shift_id")
   category  String   @default("general")
   comment   String   @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@map("shift_comment")
 }
 
-// 10. AI自動作成履歴テーブル ★新規追加
+// 10. AI自動作成履歴テーブル
 model AiGenerationLog {
   id           Int      @id @default(autoincrement())
-  storeId      Int
-  targetDate   DateTime @db.Date
+  storeId      Int      @map("store_id")
+  targetDate   DateTime @db.Date @map("target_date")
   status       String   @default("success")
-  errorMessage String?  @db.Text
-  createdAt    DateTime @default(now())
+  errorMessage String?  @db.Text @map("error_message")
+  createdAt    DateTime @default(now()) @map("created_at")
   store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("ai_generation_log")
 }
 
 // 11. ヘルプ相談チャットテーブル
 model HelpChat {
   id          Int       @id @default(autoincrement())
-  fromStoreId Int
-  toStoreId   Int?
+  fromStoreId Int       @map("from_store_id")
+  toStoreId   Int?      @map("to_store_id")
   message     String    @db.Text
-  isAi        Boolean   @default(false)
+  isAi        Boolean   @default(false) @map("is_ai")
   status      String    @default("draft")
-  sentAt      DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  sentAt      DateTime? @map("sent_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
   fromStore   Store     @relation("FromStore", fields: [fromStoreId], references: [id], onDelete: Cascade)
   toStore     Store?    @relation("ToStore", fields: [toStoreId], references: [id], onDelete: Cascade)
+
+  @@map("help_chat")
 }
