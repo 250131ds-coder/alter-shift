@@ -353,7 +353,6 @@ export default function Dashboard() {
               </thead>
               
               <tbody className="divide-y divide-gray-100">
-                {/* 📌 店舗イベント行（animate-pulse を削除して点滅を抑止） */}
                 <tr className="bg-amber-50/40 hover:bg-amber-50/70 transition-colors border-b border-gray-200">
                   <td className="p-3 font-bold text-amber-800 bg-amber-50/80 sticky left-0 z-20 border-r border-gray-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)] flex items-center gap-1">
                     🚩 店舗イベント
@@ -576,8 +575,9 @@ export default function Dashboard() {
       )}
 
       {/* フッターナビゲーション */}
-      <footer className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <footer className="mt-8 grid grid-cols-2 sm:grid-cols-5 gap-4">
         <Link href="/staff" className="bg-white p-4 rounded-xl text-center border border-gray-100 hover:bg-gray-50 transition-all block text-xs font-semibold text-gray-600 shadow-sm">👥 スタッフ管理 (CRUD)</Link>
+        <Link href="/stores" className="bg-white p-4 rounded-xl text-center border border-gray-100 hover:bg-gray-50 transition-all block text-xs font-semibold text-gray-600 shadow-sm">🏪 店舗管理マスタ</Link>
         <Link href="/settings" className="bg-white p-4 rounded-xl text-center border border-gray-100 hover:bg-gray-50 transition-all block text-xs font-semibold text-gray-600 shadow-sm">⚙️ スキル＆イベント設定</Link>
         <Link href="/submit" className="bg-white p-4 rounded-xl text-center border border-gray-100 hover:bg-gray-50 transition-all block text-xs font-semibold text-gray-600 shadow-sm">📱 スタッフ希望提出</Link>
         <Link href="/chat" className="bg-white p-4 rounded-xl text-center border border-gray-100 hover:bg-gray-50 transition-all block text-xs font-semibold text-gray-600 shadow-sm">💬 ヘルプ相談チャット</Link>
