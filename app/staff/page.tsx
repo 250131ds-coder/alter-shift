@@ -276,7 +276,7 @@ export default function StaffPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="例: 花房 賢"
+                  placeholder="例: 山田 花子"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                   required
                 />
@@ -302,7 +302,7 @@ export default function StaffPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="tanaka@example.com"
+                  placeholder="example@example.com"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-900"
                 />
               </div>
