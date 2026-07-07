@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+
+const DAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const;
 
 interface ShiftData {
   text: string;
@@ -36,39 +38,115 @@ interface Helper {
   skill: string;
 }
 
+interface ShiftApiItem {
+  id: number;
+  date: string;
+  type: string;
+  startTime: string | null;
+  endTime: string | null;
+  status: string;
+  staffId: number;
+  staffName: string;
+  role: string;
+  storeId: number;
+  storeName: string;
+}
+
+const getShiftColorByRole = (role: string) => {
+  if (role === '社員') return 'bg-indigo-500';
+  if (role === 'アルバイト') return 'bg-purple-500';
+  if (role === 'パート') return 'bg-pink-500';
+  return 'bg-gray-400';
+};
+
+const convertApiShiftsToStaffRows = (
+  shifts: ShiftApiItem[],
+  allDays: {
+    key: string;
+    dayNum: number;
+    label: string;
+    bg: string;
+    dayOfWeek: string;
+  }[]
+): StaffRow[] => {
+  const grouped = new Map<string, StaffRow>();
+
+  shifts.forEach((shift) => {
+    if (!grouped.has(shift.staffName)) {
+      const emptyShifts = allDays.reduce((acc, day) => {
+        acc[day.key] = { text: 'ー', start: 0, end: 0, color: '' };
+        return acc;
+      }, {} as { [dateStr: string]: ShiftData });
+
+      grouped.set(shift.staffName, {
+        name: shift.staffName,
+        role: shift.role,
+        shifts: emptyShifts,
+      });
+    }
+
+    const row = grouped.get(shift.staffName);
+    if (!row) return;
+
+    const start = shift.startTime
+      ? Number(shift.startTime.split(':')[0])
+      : 0;
+
+    const end = shift.endTime
+      ? Number(shift.endTime.split(':')[0])
+      : 0;
+
+    row.shifts[shift.date] = {
+      text:
+        shift.startTime && shift.endTime
+          ? `${shift.startTime}-${shift.endTime}`
+          : shift.type || 'ー',
+      start,
+      end,
+      color: getShiftColorByRole(shift.role),
+    };
+  });
+
+  return Array.from(grouped.values());
+};
+
 export default function Dashboard() {
   const [currentYear] = useState(2026);
   const [currentMonth] = useState(6);
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-  const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
-  
-  const allDays = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = i + 1;
-    const dateObj = new Date(currentYear, currentMonth - 1, d);
-    const dayOfWeekNum = dateObj.getDay();
-    const dayOfWeekStr = dayLabels[dayOfWeekNum];
-    const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-    let bg = '';
-    if (dayOfWeekStr === '土') bg = 'bg-blue-50/40';
-    if (dayOfWeekStr === '日') bg = 'bg-red-50/40';
-    if (d === 23) bg = 'bg-red-100/50';
+  const allDays = useMemo(() => {
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1;
+      const dateObj = new Date(currentYear, currentMonth - 1, d);
+      const dayOfWeekNum = dateObj.getDay();
+      const dayOfWeekStr = DAY_LABELS[dayOfWeekNum];
+      const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-    return {
-      key: dateStr,
-      dayNum: d,
-      label: `${currentMonth}/${d} (${dayOfWeekStr})`,
-      bg,
-      dayOfWeek: dayOfWeekStr
-    };
-  });
+      let bg = '';
+      if (dayOfWeekStr === '土') bg = 'bg-blue-50/40';
+      if (dayOfWeekStr === '日') bg = 'bg-red-50/40';
+      if (d === 23) bg = 'bg-red-100/50';
 
-  const weeks: typeof allDays[] = [];
-  for (let i = 0; i < allDays.length; i += 7) {
-    weeks.push(allDays.slice(i, i + 7));
-  }
+      return {
+        key: dateStr,
+        dayNum: d,
+        label: `${currentMonth}/${d} (${dayOfWeekStr})`,
+        bg,
+        dayOfWeek: dayOfWeekStr,
+      };
+    });
+  }, [currentYear, currentMonth, daysInMonth]);
+
+  const weeks = useMemo(() => {
+    const result: typeof allDays[] = [];
+    for (let i = 0; i < allDays.length; i += 7) {
+      result.push(allDays.slice(i, i + 7));
+    }
+    return result;
+  }, [allDays]);
 
   const displayDays = weeks[currentWeekIndex] || weeks[0];
 
@@ -140,6 +218,38 @@ export default function Dashboard() {
   ]);
   
   const [isSpinning, setIsSpinning] = useState(false);
+
+  useEffect(() => {
+  const fetchShiftRows = async () => {
+    try {
+      const weekDays = weeks[currentWeekIndex] || [];
+      if (weekDays.length === 0) return;
+
+      const startDate = weekDays[0].key;
+      const endDate = weekDays[weekDays.length - 1].key;
+
+      const res = await fetch(
+        `/api/shifts?storeId=1&startDate=${startDate}&endDate=${endDate}`
+      );
+
+      if (!res.ok) {
+        console.error('シフト一覧取得に失敗しました');
+        return;
+      }
+
+      const data: ShiftApiItem[] = await res.json();
+
+      if (data.length > 0) {
+        const converted = convertApiShiftsToStaffRows(data, allDays);
+        setStaffRows(converted);
+      }
+    } catch (error) {
+      console.error('シフト一覧の取得に失敗しました', error);
+    }
+  };
+
+  fetchShiftRows();
+}, [currentWeekIndex, allDays, weeks]);
 
   // ポップアップ（モーダル）用の管理State
   const [isModalOpen, setIsModalOpen] = useState(false);
