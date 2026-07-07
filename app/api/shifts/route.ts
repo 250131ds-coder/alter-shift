@@ -1,110 +1,173 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+type ShiftType = '通常' | '希望休' | '公休' | '応援';
+
+interface CreateShiftBody {
+  storeId: number;
+  staffId: number;
+  date: string; // '2026-06-03'
+  type: ShiftType | string;
+  startTime?: string | null; // '19:00'
+  endTime?: string | null;   // '04:00'
+  status?: string;
+}
+
 /**
- * YYYY-MM-DD 文字列を「ローカル日付の 00:00:00 / 23:59:59」で扱うための補助
- * DB の date カラムが @db.Date のため、範囲検索のズレを避ける
+ * YYYY-MM-DD を「その日の基準日(Date)」として扱う
+ * dateカラム（@db.Date）用
  */
-const parseDateOnly = (value: string) => {
-  const [y, m, d] = value.split('-').map(Number);
-
-  if (!y || !m || !d) return null;
-
-  const date = new Date(y, m - 1, d);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return date;
+const parseDateOnly = (dateStr: string) => {
+  return new Date(`${dateStr}T00:00:00`);
 };
 
-const startOfDay = (date: Date) =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-
-const endOfDay = (date: Date) =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+/**
+ * YYYY-MM-DD / HH:mm から Date を作る
+ * これは「ローカル時間として組み立ててDBに保存するため」の値
+ */
+const parseDateTime = (dateStr: string, timeStr: string) => {
+  return new Date(`${dateStr}T${timeStr}:00`);
+};
 
 /**
- * DBの日付を YYYY-MM-DD に変換
- * toISOString() だとタイムゾーンで日付ズレする可能性があるのでローカル基準で組み立てる
+ * YYYY-MM-DD 文字列化
+ * dateカラム表示用
  */
 const formatDate = (date: Date) => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 /**
- * Prisma の DateTime(@db.Time) を HH:mm に変換
+ * Date から HH:mm を取り出す
+ *
+ * 重要:
+ * startAt / endAt は DateTime として保存されるため、
+ * toISOString() などと混ぜると UTC / JST のズレが起きやすい。
+ *
+ * 今回は「DBに保存したローカル時刻そのものを画面表示したい」ので、
+ * UTCではなくローカルの getHours/getMinutes を使う。
  */
-const formatTime = (value: Date | null) => {
-  if (!value) return null;
+const formatTime = (date: Date | null) => {
+  if (!date) return null;
 
-  const hours = String(value.getHours()).padStart(2, '0');
-  const minutes = String(value.getMinutes()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
 };
 
 /**
- * "19:00" -> Date
- * Shift.startTime / endTime は Prisma 上 DateTime(@db.Time) なので、
- * 保存時は適当な基準日を使って時刻だけ保持する
+ * 夜勤判定
+ * endAt が startAt 以下なら翌日勤務扱い
  */
-const parseTimeToDate = (time: string | null | undefined) => {
-  if (!time) return null;
-
-  const [hours, minutes] = time.split(':').map(Number);
-
-  if (
-    hours == null ||
-    minutes == null ||
-    Number.isNaN(hours) ||
-    Number.isNaN(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return null;
-  }
-
-  return new Date(1970, 0, 1, hours, minutes, 0, 0);
+const isOvernightShift = (startAt: Date | null, endAt: Date | null) => {
+  if (!startAt || !endAt) return false;
+  return endAt.getTime() <= startAt.getTime() || formatDate(startAt) !== formatDate(endAt);
 };
 
-const normalizeShift = (shift: {
+/**
+ * 勤務分数
+ */
+const calcWorkMinutes = (startAt: Date | null, endAt: Date | null) => {
+  if (!startAt || !endAt) return 0;
+  const diffMs = endAt.getTime() - startAt.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60)));
+};
+
+/**
+ * 休み系シフトかどうか
+ */
+const isNoTimeShiftType = (type: string) => {
+  return type === '希望休' || type === '公休';
+};
+
+/**
+ * date + startTime/endTime から startAt/endAt を作る
+ * 夜勤の場合は endAt を翌日にずらす
+ */
+const buildShiftDateTimes = (
+  date: string,
+  type: string,
+  startTime?: string | null,
+  endTime?: string | null
+) => {
+  if (isNoTimeShiftType(type)) {
+    return {
+      startAt: null,
+      endAt: null,
+    };
+  }
+
+  if (!startTime || !endTime) {
+    throw new Error('通常シフトには startTime / endTime が必要です');
+  }
+
+  const startAt = parseDateTime(date, startTime);
+  const endAt = parseDateTime(date, endTime);
+
+  // 例: 19:00 → 04:00 は翌日扱い
+  if (endAt.getTime() <= startAt.getTime()) {
+    endAt.setDate(endAt.getDate() + 1);
+  }
+
+  return { startAt, endAt };
+};
+
+/**
+ * Prismaから返る Shift の型
+ * schema.prisma の startAt / endAt に合わせる
+ */
+type ShiftWithRelations = {
   id: number;
   date: Date;
   type: string;
-  startTime: Date | null;
-  endTime: Date | null;
+  startAt: Date | null;
+  endAt: Date | null;
   status: string;
   staffId: number;
   storeId: number;
   staff: {
-    id: number;
     name: string;
     role: string;
   };
   store: {
-    id: number;
     name: string;
   };
-}) => ({
-  id: shift.id,
-  date: formatDate(shift.date),
-  type: shift.type,
-  startTime: formatTime(shift.startTime),
-  endTime: formatTime(shift.endTime),
-  status: shift.status,
-  staffId: shift.staffId,
-  staffName: shift.staff.name,
-  role: shift.staff.role,
-  storeId: shift.storeId,
-  storeName: shift.store.name,
-});
+};
 
 /**
- * GET /api/shifts?storeId=1&startDate=2026-06-01&endDate=2026-06-07
+ * API返却用に整形
  */
+const toShiftResponse = (shift: ShiftWithRelations) => {
+  const overnight = isOvernightShift(shift.startAt, shift.endAt);
+
+  return {
+    id: shift.id,
+    date: formatDate(shift.date),
+    type: shift.type,
+
+    // デバッグや将来の詳細表示用に残す
+    startAt: shift.startAt ? shift.startAt.toISOString() : null,
+    endAt: shift.endAt ? shift.endAt.toISOString() : null,
+
+    // 画面で使う表示向け
+    startTime: formatTime(shift.startAt),
+    endTime: formatTime(shift.endAt),
+
+    isOvernight: overnight,
+    workMinutes: calcWorkMinutes(shift.startAt, shift.endAt),
+
+    status: shift.status,
+    staffId: shift.staffId,
+    staffName: shift.staff.name,
+    role: shift.staff.role,
+    storeId: shift.storeId,
+    storeName: shift.store.name,
+  };
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -112,7 +175,6 @@ export async function GET(request: NextRequest) {
     const storeId = searchParams.get('storeId');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
-    const staffId = searchParams.get('staffId');
     const status = searchParams.get('status');
 
     if (!storeId) {
@@ -140,47 +202,32 @@ export async function GET(request: NextRequest) {
     const start = parseDateOnly(startDate);
     const end = parseDateOnly(endDate);
 
-    if (!start || !end) {
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return NextResponse.json(
-        { error: '日付形式が不正です。YYYY-MM-DD を指定してください。' },
+        { error: '日付形式が不正です' },
         { status: 400 }
       );
     }
 
-    const numericStaffId =
-      staffId && staffId.trim() !== '' ? Number(staffId) : undefined;
-
-    if (
-      numericStaffId !== undefined &&
-      (!Number.isInteger(numericStaffId) || numericStaffId <= 0)
-    ) {
-      return NextResponse.json(
-        { error: 'staffId が不正です' },
-        { status: 400 }
-      );
-    }
-
+    // endDate 当日まで含めたいので date列（@db.Date）に対しては lte でOK
     const shifts = await prisma.shift.findMany({
       where: {
         storeId: numericStoreId,
         date: {
-          gte: startOfDay(start),
-          lte: endOfDay(end),
+          gte: start,
+          lte: end,
         },
-        ...(numericStaffId ? { staffId: numericStaffId } : {}),
         ...(status ? { status } : {}),
       },
       include: {
         staff: {
           select: {
-            id: true,
             name: true,
             role: true,
           },
         },
         store: {
           select: {
-            id: true,
             name: true,
           },
         },
@@ -195,16 +242,31 @@ export async function GET(request: NextRequest) {
       storeId: numericStoreId,
       startDate,
       endDate,
-      staffId: numericStaffId ?? null,
-      status: status ?? null,
+      status,
     });
 
     console.log('GET /api/shifts result count:', shifts.length);
 
-    return NextResponse.json(shifts.map(normalizeShift), { status: 200 });
+    console.log(
+      'GET /api/shifts raw shifts:',
+      shifts.map((shift) => ({
+        id: shift.id,
+        storeId: shift.storeId,
+        staffId: shift.staffId,
+        date: shift.date,
+        type: shift.type,
+        startAt: shift.startAt,
+        endAt: shift.endAt,
+      }))
+    );
+
+    const formatted = shifts.map((shift) =>
+      toShiftResponse(shift as ShiftWithRelations)
+    );
+
+    return NextResponse.json(formatted, { status: 200 });
   } catch (error) {
     console.error('シフト一覧取得エラー:', error);
-
     return NextResponse.json(
       {
         error: 'シフト一覧の取得に失敗しました',
@@ -215,22 +277,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST /api/shifts
- * body:
- * {
- *   "storeId": 1,
- *   "staffId": 2,
- *   "date": "2026-06-03",
- *   "type": "通常",
- *   "startTime": "19:00",
- *   "endTime": "04:00",
- *   "status": "draft"
- * }
- */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = (await request.json()) as CreateShiftBody;
 
     const {
       storeId,
@@ -240,150 +289,137 @@ export async function POST(request: NextRequest) {
       startTime = null,
       endTime = null,
       status = 'draft',
-    } = body ?? {};
+    } = body;
 
-    const numericStoreId = Number(storeId);
-    const numericStaffId = Number(staffId);
-
-    if (!Number.isInteger(numericStoreId) || numericStoreId <= 0) {
+    if (!storeId || !Number.isInteger(Number(storeId))) {
       return NextResponse.json(
-        { error: 'storeId が不正です' },
+        { error: 'storeId は必須です' },
         { status: 400 }
       );
     }
 
-    if (!Number.isInteger(numericStaffId) || numericStaffId <= 0) {
+    if (!staffId || !Number.isInteger(Number(staffId))) {
       return NextResponse.json(
-        { error: 'staffId が不正です' },
+        { error: 'staffId は必須です' },
         { status: 400 }
       );
     }
 
-    if (!date || typeof date !== 'string') {
+    if (!date) {
       return NextResponse.json(
-        { error: 'date は必須です（YYYY-MM-DD）' },
+        { error: 'date は必須です' },
         { status: 400 }
       );
     }
 
-    const parsedDate = parseDateOnly(date);
-    if (!parsedDate) {
-      return NextResponse.json(
-        { error: 'date の形式が不正です（YYYY-MM-DD）' },
-        { status: 400 }
-      );
-    }
-
-    if (!type || typeof type !== 'string') {
+    if (!type) {
       return NextResponse.json(
         { error: 'type は必須です' },
         { status: 400 }
       );
     }
 
-    const parsedStartTime = parseTimeToDate(startTime);
-    const parsedEndTime = parseTimeToDate(endTime);
-
-    if (startTime && !parsedStartTime) {
+    const shiftDate = parseDateOnly(date);
+    if (Number.isNaN(shiftDate.getTime())) {
       return NextResponse.json(
-        { error: 'startTime の形式が不正です（HH:mm）' },
-        { status: 400 }
-      );
-    }
-
-    if (endTime && !parsedEndTime) {
-      return NextResponse.json(
-        { error: 'endTime の形式が不正です（HH:mm）' },
-        { status: 400 }
-      );
-    }
-
-    // staff が store に所属しているか確認
-    const staff = await prisma.staff.findUnique({
-      where: { id: numericStaffId },
-      select: {
-        id: true,
-        name: true,
-        role: true,
-        storeId: true,
-      },
-    });
-
-    if (!staff) {
-      return NextResponse.json(
-        { error: '指定された staff が存在しません' },
-        { status: 404 }
-      );
-    }
-
-    if (staff.storeId !== numericStoreId) {
-      return NextResponse.json(
-        { error: '指定された staff はこの店舗に所属していません' },
+        { error: 'date の形式が不正です。YYYY-MM-DD 形式で指定してください。' },
         { status: 400 }
       );
     }
 
     const store = await prisma.store.findUnique({
-      where: { id: numericStoreId },
-      select: { id: true, name: true },
+      where: { id: Number(storeId) },
     });
 
     if (!store) {
       return NextResponse.json(
-        { error: '指定された store が存在しません' },
+        { error: '指定された店舗が存在しません' },
         { status: 404 }
       );
     }
 
-    // 既存シフト確認（schema 側で staffId + date unique）
-    const existing = await prisma.shift.findFirst({
+    const staff = await prisma.staff.findUnique({
+      where: { id: Number(staffId) },
+    });
+
+    if (!staff) {
+      return NextResponse.json(
+        { error: '指定されたスタッフが存在しません' },
+        { status: 404 }
+      );
+    }
+
+    if (staff.storeId !== Number(storeId)) {
+      return NextResponse.json(
+        { error: 'このスタッフは指定店舗に所属していません' },
+        { status: 400 }
+      );
+    }
+
+    let startAt: Date | null = null;
+    let endAt: Date | null = null;
+
+    try {
+      const built = buildShiftDateTimes(date, type, startTime, endTime);
+      startAt = built.startAt;
+      endAt = built.endAt;
+    } catch (e) {
+      return NextResponse.json(
+        {
+          error: e instanceof Error ? e.message : 'シフト日時の組み立てに失敗しました',
+        },
+        { status: 400 }
+      );
+    }
+
+    // staffId + date の重複チェック
+    const existing = await prisma.shift.findUnique({
       where: {
-        staffId: numericStaffId,
-        date: parsedDate,
+        staffId_date: {
+          staffId: Number(staffId),
+          date: shiftDate,
+        },
       },
     });
 
     if (existing) {
       return NextResponse.json(
-        {
-          error: 'このスタッフの同日シフトは既に存在します',
-          existingShiftId: existing.id,
-        },
+        { error: 'このスタッフの同日シフトは既に存在します' },
         { status: 409 }
       );
     }
 
     const created = await prisma.shift.create({
       data: {
-        storeId: numericStoreId,
-        staffId: numericStaffId,
-        date: parsedDate,
+        storeId: Number(storeId),
+        staffId: Number(staffId),
+        date: shiftDate,
         type,
-        startTime: parsedStartTime,
-        endTime: parsedEndTime,
+        startAt,
+        endAt,
         status,
       },
       include: {
         staff: {
           select: {
-            id: true,
             name: true,
             role: true,
           },
         },
         store: {
           select: {
-            id: true,
             name: true,
           },
         },
       },
     });
 
-    return NextResponse.json(normalizeShift(created), { status: 201 });
+    return NextResponse.json(
+      toShiftResponse(created as ShiftWithRelations),
+      { status: 201 }
+    );
   } catch (error) {
     console.error('シフト作成エラー:', error);
-
     return NextResponse.json(
       {
         error: 'シフト作成に失敗しました',
