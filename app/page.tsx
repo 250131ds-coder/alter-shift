@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type ShiftType = '通常' | '希望休' | '公休' | '応援';
 
@@ -28,7 +28,7 @@ type StaffRow = {
 
 type ShiftMap = Record<string, ShiftRow>;
 
-const STORE_ID = 1;
+const STORE_ID = 10;
 
 /* =========================
  * 日付ユーティリティ
@@ -80,28 +80,6 @@ const isWeekend = (date: Date) => {
  * ========================= */
 const isNoTimeShift = (type: string) => {
   return type === '希望休' || type === '公休';
-};
-
-const formatShiftCellText = (shift: ShiftRow | undefined) => {
-  if (!shift) return '';
-
-  if (isNoTimeShift(shift.type)) {
-    return shift.type;
-  }
-
-  if (shift.type === '応援') {
-    if (shift.startTime && shift.endTime) {
-      return `応援 ${shift.startTime}-${shift.endTime}`;
-    }
-    return '応援';
-  }
-
-  if (shift.startTime && shift.endTime) {
-    const overnightMark = shift.isOvernight ? ' 🌙' : '';
-    return `${shift.startTime}-${shift.endTime}${overnightMark}`;
-  }
-
-  return shift.type;
 };
 
 const getShiftCellClassName = (shift: ShiftRow | undefined) => {
@@ -182,15 +160,15 @@ export default function Page() {
 
   const shiftMap = useMemo(() => buildShiftMap(shiftRows), [shiftRows]);
 
-  const fetchShiftRows = async () => {
-    try {
-      setLoading(true);
+  const fetchShiftRows = useCallback(async () => {
+  try {
+    setLoading(true);
 
-      const params = new URLSearchParams({
-        storeId: String(STORE_ID),
-        startDate,
-        endDate,
-      });
+    const params = new URLSearchParams({
+      storeId: String(STORE_ID),
+      startDate,
+      endDate,
+    });
 
       const res = await fetch(`/api/shifts?${params.toString()}`, {
         cache: 'no-store',
@@ -221,11 +199,11 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [startDate, endDate]);
 
   useEffect(() => {
-    void fetchShiftRows();
-  }, [startDate, endDate]);
+  void fetchShiftRows();
+}, [fetchShiftRows]);
 
   const handlePrevMonth = () => {
     setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
