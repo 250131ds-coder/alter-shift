@@ -73,7 +73,7 @@ export async function PUT(
       },
       data: {
         date: shiftDate,
-        staffId,
+        staffId: Number(staffId),
         type,
         startAt,
         endAt,
@@ -90,6 +90,39 @@ export async function PUT(
     return NextResponse.json(
       {
         error: "シフト更新に失敗しました",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+/**
+ * DELETE
+ * シフト削除
+ */
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+
+    await prisma.shift.delete({
+      where: {
+        id: Number(id),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return NextResponse.json(
+      {
+        error: "シフト削除に失敗しました",
       },
       {
         status: 500,

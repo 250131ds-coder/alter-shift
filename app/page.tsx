@@ -342,44 +342,68 @@ export default function Page() {
   };
 
   const updateShift = async () => {
-  try {
-    const payload = {
-      staffId: Number(editForm.staffId),
-      date: editForm.date,
-      type: editForm.type,
-      startTime:
-        editForm.type === "希望休" || editForm.type === "公休"
-          ? null
-          : editForm.startTime,
-      endTime:
-        editForm.type === "希望休" || editForm.type === "公休"
-          ? null
-          : editForm.endTime,
-      status: editForm.status,
-    };
+    try {
+      setSubmitting(true);
 
-    const res = await fetch(`/api/shifts/${editForm.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+      const res = await fetch(`/api/shifts/${editForm.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      const body = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        alert(body?.error ?? "更新に失敗しました");
+        return;
+      }
+
+      alert("更新しました");
+
+      setEditingShift(null);
+
+      await fetchShiftRows();
+    } catch (error) {
+      console.error(error);
+      alert("更新エラー");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const deleteShift = async () => {
+  if (!editingShift) return;
+
+  const ok = confirm("このシフトを削除しますか？");
+
+  if (!ok) return;
+
+  try {
+    setSubmitting(true);
+
+    const res = await fetch(`/api/shifts/${editingShift.id}`, {
+      method: "DELETE",
     });
 
+    const body = await res.json().catch(() => null);
+
     if (!res.ok) {
-      const body = await res.json();
-      alert(body.error ?? "更新に失敗しました");
+      alert(body?.error ?? "削除に失敗しました");
       return;
     }
 
-    alert("シフトを更新しました");
+    alert("削除しました");
 
     setEditingShift(null);
 
     await fetchShiftRows();
-  } catch (err) {
-    console.error(err);
-    alert("更新中にエラーが発生しました");
+  } catch (error) {
+    console.error(error);
+    alert("削除中にエラーが発生しました");
+  } finally {
+    setSubmitting(false);
   }
 };
 
@@ -430,100 +454,6 @@ export default function Page() {
             </div>
           </div>
         </section>
-
-        {editingShift && (
-          <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <h2 className="mb-4 text-lg font-bold">
-              シフト編集（ID:{editForm.id}）
-            </h2>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-
-              <div>
-                <label className="text-sm">日付</label>
-                <input
-                  type="date"
-                  value={editForm.date}
-                  onChange={(e)=>
-                    setEditForm({
-                      ...editForm,
-                      date:e.target.value
-                    })
-                  }
-                  className="w-full rounded border px-2 py-2"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm">種別</label>
-                <select
-                  value={editForm.type}
-                  onChange={(e)=>
-                    setEditForm({
-                      ...editForm,
-                      type:e.target.value as ShiftType
-                    })
-                  }
-                  className="w-full rounded border px-2 py-2"
-                >
-                  <option value="通常">通常</option>
-                  <option value="希望休">希望休</option>
-                  <option value="公休">公休</option>
-                  <option value="応援">応援</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-sm">開始</label>
-                <input
-                  type="time"
-                  value={editForm.startTime}
-                  onChange={(e)=>
-                    setEditForm({
-                      ...editForm,
-                      startTime:e.target.value
-                    })
-                  }
-                  className="w-full rounded border px-2 py-2"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm">終了</label>
-                <input
-                  type="time"
-                  value={editForm.endTime}
-                  onChange={(e)=>
-                    setEditForm({
-                      ...editForm,
-                      endTime:e.target.value
-                    })
-                  }
-                  className="w-full rounded border px-2 py-2"
-                />
-              </div>
-
-              <div className="flex gap-2 items-end">
-
-                <button
-                  onClick={updateShift}
-                  className="w-full rounded bg-blue-600 py-2 text-white"
-                >
-                  更新
-                </button>
-
-                <button
-                  className="w-full rounded bg-red-600 py-2 text-white"
-                  onClick={() => setEditingShift(null)}
-                >
-                  キャンセル
-                </button>
-
-              </div>
-
-            </div>
-          </section>
-        )}
 
         <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <h2 className="mb-4 text-lg font-bold">シフト作成</h2>
@@ -778,6 +708,115 @@ export default function Page() {
             </div>
           </div>
         </section>
+
+        {editingShift && (
+          <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <h2 className="mb-4 text-lg font-bold">
+              シフト編集
+            </h2>
+
+            <div className="space-y-4">
+
+              <div>
+                <label className="block text-sm font-medium">
+                  日付
+                </label>
+
+                <input
+                  type="date"
+                  value={editForm.date}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      date: e.target.value,
+                    })
+                  }
+                  className="w-full rounded border p-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium">
+                  種別
+                </label>
+
+                <select
+                  value={editForm.type}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      type: e.target.value as ShiftType,
+                    })
+                  }
+                  className="w-full rounded border p-2"
+                >
+                  <option value="通常">通常</option>
+                  <option value="希望休">希望休</option>
+                  <option value="公休">公休</option>
+                  <option value="応援">応援</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium">
+                    開始
+                  </label>
+
+                  <input
+                    type="time"
+                    value={editForm.startTime}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        startTime: e.target.value,
+                      })
+                    }
+                    className="w-full rounded border p-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium">
+                    終了
+                  </label>
+
+                  <input
+                    type="time"
+                    value={editForm.endTime}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        endTime: e.target.value,
+                      })
+                    }
+                    className="w-full rounded border p-2"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+
+                <button
+                  onClick={updateShift}
+                  className="rounded bg-blue-600 px-4 py-2 text-white"
+                >
+                  更新
+                </button>
+
+                <button
+                  onClick={deleteShift}
+                  disabled={submitting}
+                  className="rounded bg-red-600 px-4 py-2 text-white"
+                >
+                  削除
+                </button>
+
+              </div>
+
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );
