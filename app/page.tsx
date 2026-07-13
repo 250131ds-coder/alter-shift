@@ -26,9 +26,12 @@ type StaffRow = {
   role: string;
 };
 
-type ShiftMap = Record<string, ShiftRow>;
+type StoreRow = {
+  id: number;
+  name: string;
+};
 
-const STORE_ID = 10;
+type ShiftMap = Record<string, ShiftRow>;
 
 /* =========================
  * 日付ユーティリティ
@@ -146,7 +149,11 @@ const initialForm = {
  * Page
  * ========================= */
 export default function Page() {
-  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 5, 1));
+  
+  const [stores, setStores] = useState<StoreRow[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState(11);
+
   const [shiftRows, setShiftRows] = useState<ShiftRow[]>([]);
   const [staffs, setStaffs] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -154,18 +161,50 @@ export default function Page() {
   const [form, setForm] = useState(initialForm);
   const [submitting, setSubmitting] = useState(false);
 
+  const [editingShift, setEditingShift] = useState<ShiftRow | null>(null);
+
+  const [editForm, setEditForm] = useState({
+    id: 0,
+    staffId: '',
+    date: '',
+    type: '通常' as ShiftType,
+    startTime: '09:00',
+    endTime: '18:00',
+    status: 'draft',
+  });
+
   const monthDates = useMemo(() => getDatesInMonth(currentMonth), [currentMonth]);
   const startDate = useMemo(() => formatDate(getMonthStart(currentMonth)), [currentMonth]);
   const endDate = useMemo(() => formatDate(getMonthEnd(currentMonth)), [currentMonth]);
 
   const shiftMap = useMemo(() => buildShiftMap(shiftRows), [shiftRows]);
 
+  const fetchStores = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stores");
+
+      if (!res.ok) {
+        throw new Error("店舗取得失敗");
+      }
+
+      const data: StoreRow[] = await res.json();
+
+      setStores(data);
+
+      if (data.length > 0) {
+        setSelectedStoreId((prev) => prev ?? data[0].id);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+
   const fetchShiftRows = useCallback(async () => {
   try {
     setLoading(true);
 
     const params = new URLSearchParams({
-      storeId: String(STORE_ID),
+      storeId: String(selectedStoreId),
       startDate,
       endDate,
     });
@@ -199,7 +238,29 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [selectedStoreId, startDate, endDate]);
+
+  useEffect(() => {
+  void fetchStores();
+}, [fetchStores]);
+
+  useEffect(() => {
+    const fetchStores = async () => {
+      const res = await fetch("/api/stores");
+
+      if (!res.ok) return;
+
+      const data: StoreRow[] = await res.json();
+
+      setStores(data);
+
+      if (data.length > 0) {
+        setSelectedStoreId(data[0].id);
+      }
+    };
+
+    void fetchStores();
+  }, []);
 
   useEffect(() => {
   void fetchShiftRows();
@@ -245,7 +306,7 @@ export default function Page() {
       setSubmitting(true);
 
       const payload = {
-        storeId: STORE_ID,
+        storeId: selectedStoreId,
         staffId: Number(form.staffId),
         date: form.date,
         type: form.type,
@@ -280,6 +341,48 @@ export default function Page() {
     }
   };
 
+  const updateShift = async () => {
+  try {
+    const payload = {
+      staffId: Number(editForm.staffId),
+      date: editForm.date,
+      type: editForm.type,
+      startTime:
+        editForm.type === "希望休" || editForm.type === "公休"
+          ? null
+          : editForm.startTime,
+      endTime:
+        editForm.type === "希望休" || editForm.type === "公休"
+          ? null
+          : editForm.endTime,
+      status: editForm.status,
+    };
+
+    const res = await fetch(`/api/shifts/${editForm.id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      alert(body.error ?? "更新に失敗しました");
+      return;
+    }
+
+    alert("シフトを更新しました");
+
+    setEditingShift(null);
+
+    await fetchShiftRows();
+  } catch (err) {
+    console.error(err);
+    alert("更新中にエラーが発生しました");
+  }
+};
+
   return (
     <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mx-auto max-w-[1800px] space-y-6">
@@ -287,9 +390,23 @@ export default function Page() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-bold">シフト管理ダッシュボード</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                店舗ID: {STORE_ID} / 夜勤対応版
-              </p>
+              <div className="mt-4 flex items-center gap-3">
+                <label className="text-sm font-medium">
+                  店舗選択
+                </label>
+
+                <select
+                  value={selectedStoreId}
+                  onChange={(e) => setSelectedStoreId(Number(e.target.value))}
+                  className="rounded-md border border-slate-300 px-3 py-2"
+                >
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -313,6 +430,100 @@ export default function Page() {
             </div>
           </div>
         </section>
+
+        {editingShift && (
+          <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <h2 className="mb-4 text-lg font-bold">
+              シフト編集（ID:{editForm.id}）
+            </h2>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+
+              <div>
+                <label className="text-sm">日付</label>
+                <input
+                  type="date"
+                  value={editForm.date}
+                  onChange={(e)=>
+                    setEditForm({
+                      ...editForm,
+                      date:e.target.value
+                    })
+                  }
+                  className="w-full rounded border px-2 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm">種別</label>
+                <select
+                  value={editForm.type}
+                  onChange={(e)=>
+                    setEditForm({
+                      ...editForm,
+                      type:e.target.value as ShiftType
+                    })
+                  }
+                  className="w-full rounded border px-2 py-2"
+                >
+                  <option value="通常">通常</option>
+                  <option value="希望休">希望休</option>
+                  <option value="公休">公休</option>
+                  <option value="応援">応援</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm">開始</label>
+                <input
+                  type="time"
+                  value={editForm.startTime}
+                  onChange={(e)=>
+                    setEditForm({
+                      ...editForm,
+                      startTime:e.target.value
+                    })
+                  }
+                  className="w-full rounded border px-2 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm">終了</label>
+                <input
+                  type="time"
+                  value={editForm.endTime}
+                  onChange={(e)=>
+                    setEditForm({
+                      ...editForm,
+                      endTime:e.target.value
+                    })
+                  }
+                  className="w-full rounded border px-2 py-2"
+                />
+              </div>
+
+              <div className="flex gap-2 items-end">
+
+                <button
+                  onClick={updateShift}
+                  className="w-full rounded bg-blue-600 py-2 text-white"
+                >
+                  更新
+                </button>
+
+                <button
+                  className="w-full rounded bg-red-600 py-2 text-white"
+                  onClick={() => setEditingShift(null)}
+                >
+                  キャンセル
+                </button>
+
+              </div>
+
+            </div>
+          </section>
+        )}
 
         <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <h2 className="mb-4 text-lg font-bold">シフト作成</h2>
@@ -469,6 +680,21 @@ export default function Page() {
                         return (
                           <td
                             key={`${staff.id}_${dateStr}`}
+                            onClick={() => {
+                              if (!shift) return;
+
+                              setEditingShift(shift);
+
+                              setEditForm({
+                                id: shift.id,
+                                staffId: String(shift.staffId),
+                                date: shift.date,
+                                type: shift.type as ShiftType,
+                                startTime: shift.startTime ?? "09:00",
+                                endTime: shift.endTime ?? "18:00",
+                                status: shift.status,
+                              });
+                            }}
                             className={`h-[72px] min-w-[110px] border border-slate-300 px-2 py-2 align-top ${className}`}
                             title={
                               shift
