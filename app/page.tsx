@@ -405,6 +405,38 @@ export default function Page() {
   } finally {
     setSubmitting(false);
   }
+  };
+  const generateAiShift = async () => {
+  try {
+    setSubmitting(true);
+
+    const res = await fetch("/api/ai/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        storeId: selectedStoreId,
+        targetMonth: formatDate(currentMonth),
+      }),
+    });
+
+    const body = await res.json();
+
+    if (!res.ok) {
+      alert(body.error ?? "AIシフト作成に失敗しました");
+      return;
+    }
+
+    alert(body.message);
+
+    await fetchShiftRows();
+  } catch (error) {
+    console.error(error);
+    alert("AIシフト作成中にエラーが発生しました");
+  } finally {
+    setSubmitting(false);
+  }
 };
 
   return (
@@ -545,6 +577,13 @@ export default function Page() {
               className="rounded-md bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
             >
               {submitting ? '作成中...' : 'シフト作成'}
+            </button>
+
+            <button
+              onClick={generateAiShift}
+              className="rounded bg-purple-600 px-4 py-2 text-white"
+            >
+              AIシフト作成
             </button>
           </div>
 
