@@ -461,13 +461,22 @@ export default function Page() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
             <div className="space-y-2">
               <label className="text-sm font-medium">スタッフID</label>
-              <input
-                type="number"
+              <select
                 value={form.staffId}
-                onChange={(e) => handleChangeForm('staffId', e.target.value)}
+                onChange={(e) => handleChangeForm("staffId", e.target.value)}
                 className="w-full rounded-md border border-slate-300 px-3 py-2"
-                placeholder="例: 1"
-              />
+              >
+                <option value="">スタッフを選択</option>
+
+                {staffs.map((staff) => (
+                  <option
+                    key={staff.id}
+                    value={staff.id}
+                  >
+                    {staff.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">

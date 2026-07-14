@@ -40,7 +40,17 @@ export async function PUT(
       staffId,
     } = body;
 
-    const shiftDate = new Date(date);
+    const [year, month, day] = date.split("-").map(Number);
+
+    const shiftDate = new Date(
+      year,
+      month - 1,
+      day,
+      12,
+      0,
+      0,
+      0
+    );
 
     let startAt: Date | null = null;
     let endAt: Date | null = null;

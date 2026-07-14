@@ -18,7 +18,17 @@ interface CreateShiftBody {
  * dateカラム（@db.Date）用
  */
 const parseDateOnly = (dateStr: string) => {
-  return new Date(`${dateStr}T00:00:00`);
+  const [year, month, day] = dateStr.split("-").map(Number);
+
+  return new Date(
+    year,
+    month - 1,
+    day,
+    12, // 正午にする
+    0,
+    0,
+    0
+  );
 };
 
 /**
