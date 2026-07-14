@@ -31,6 +31,24 @@ const parseDateOnly = (dateStr: string) => {
   );
 };
 
+// ↓↓↓ ここに新しい2つの関数を追加 ↓↓↓
+/**
+ * 範囲検索用：開始日の 00:00:00 を返す
+ */
+const parseRangeStart = (dateStr: string) => {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day, 0, 0, 0, 0);
+};
+
+/**
+ * 範囲検索用：終了日の「翌日 00:00:00」を返す（lt で使う）
+ */
+const parseRangeEndExclusive = (dateStr: string) => {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day + 1, 0, 0, 0, 0);
+};
+// ↑↑↑ ここまで追加 ↑↑↑
+
 /**
  * YYYY-MM-DD / HH:mm から Date を作る
  * これは「ローカル時間として組み立ててDBに保存するため」の値
@@ -209,8 +227,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const start = parseDateOnly(startDate);
-    const end = parseDateOnly(endDate);
+    const start = parseRangeStart(startDate);
+    const end = parseRangeEndExclusive(endDate);
 
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return NextResponse.json(
@@ -225,7 +243,7 @@ export async function GET(request: NextRequest) {
         storeId: numericStoreId,
         date: {
           gte: start,
-          lte: end,
+          lt: end,
         },
         ...(status ? { status } : {}),
       },

@@ -428,7 +428,13 @@ export default function Page() {
       return;
     }
 
-    alert(body.message);
+    // 変更後
+    const noteText =
+      body.notes && body.notes.length > 0
+        ? `\n\n【注意事項】\n${body.notes.join("\n")}`
+        : "";
+
+    alert(`${body.message}${noteText}`);
 
     await fetchShiftRows();
   } catch (error) {

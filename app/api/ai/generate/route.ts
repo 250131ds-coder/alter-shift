@@ -73,44 +73,56 @@ export async function POST(req: NextRequest) {
     const skippedDates = Array.from(existingDates);
 
     const prompt = `
-あなたはシフト作成アシスタントです。以下の条件で${year}年${month + 1}月（1日〜${daysInMonth}日）のシフト案を作成してください。
+    あなたはシフト作成アシスタントです。以下の条件で${year}年${month + 1}月（1日〜${daysInMonth}日）のシフト案を作成してください。
 
-# スタッフ一覧（id, 名前, 保有スキル）
-${JSON.stringify(staffData, null, 2)}
+    # スタッフ一覧（id, 名前, 保有スキル）
+    ${JSON.stringify(staffData, null, 2)}
 
-# イベント・必要人数（設定のある日のみ）
-${JSON.stringify(eventData, null, 2)}
-※ 記載のない日は「通常営業」とし、最低1名を配置してください。
+    # イベント・必要人数（設定のある日のみ）
+    ${JSON.stringify(eventData, null, 2)}
+    ※ 記載のない日は「通常営業」とし、最低1名を配置してください（スキル指定なし）。
 
-# 既にシフトが確定していてスキップすべき日
-${JSON.stringify(skippedDates)}
+    # 既にシフトが確定していてスキップすべき日
+    ${JSON.stringify(skippedDates)}
 
-# 出力ルール
-- 上記のスキップ対象日は絶対に含めないこと
-- 各スタッフのスキルと、その日の必要スキルをできるだけ一致させること
-- 出力は以下のJSON配列のみ。説明文・Markdown記法(\`\`\`など)は一切含めないこと
+    # 【最重要】スキル条件について
+    - イベントで特定スキルの必要人数が指定されている日は、必ずそのスキルを保有するスタッフのみを配置してください。
+    - 例：「レジ2名」が必要な日は、staffDataのskills配列に "レジ" を含むスタッフを2名選んでください。skillsに"レジ"がないスタッフは絶対に選ばないでください。
+    - 指定されたスキルを満たすスタッフが人数分いない場合は、無理に埋めず、不足分は配置しないでください（0名〜可能な人数のみ配置）。この場合、その日について「スキル不足のため○名しか配置できません」という情報を後述のnotesに含めてください。
 
-[
-  { "date": "YYYY-MM-DD", "staffId": 数値, "startTime": "09:00", "endTime": "18:00" }
-]
-`;
+    # 出力ルール
+    - 上記のスキップ対象日は絶対に含めないこと
+    - 出力は以下のJSON形式のみ。説明文・Markdown記法(\`\`\`など)は一切含めないこと
+
+    {
+    "shifts": [
+        { "date": "YYYY-MM-DD", "staffId": 数値, "startTime": "09:00", "endTime": "18:00" }
+    ],
+    "notes": ["スキル不足などの補足情報があれば記載"]
+    }
+    `;
 
     const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
     const result = await model.generateContent(prompt);
     const rawText = result.response.text();
 
+    console.log("=== Gemini raw response ===", rawText);
+
     // Markdownのコードフェンスが混ざった場合の保険
     const cleaned = rawText.replace(/```json|```/g, "").trim();
 
-    let shiftPlan: {
-      date: string;
-      staffId: number;
-      startTime: string;
-      endTime: string;
-    }[];
+    let parsedResponse: {
+      shifts: {
+        date: string;
+        staffId: number;
+        startTime: string;
+        endTime: string;
+      }[];
+      notes?: string[];
+    };
 
     try {
-      shiftPlan = JSON.parse(cleaned);
+      parsedResponse = JSON.parse(cleaned);
     } catch (parseError) {
       await prisma.aiGenerationLog.create({
         data: {
@@ -124,6 +136,12 @@ ${JSON.stringify(skippedDates)}
         { error: "AIの応答を解析できませんでした" },
         { status: 500 }
       );
+    }
+
+    const shiftPlan = parsedResponse.shifts;
+
+    if (parsedResponse.notes && parsedResponse.notes.length > 0) {
+      console.log("=== Gemini notes ===", parsedResponse.notes);
     }
 
     // ⑤ DBに反映（既存日・不正データはスキップ）
@@ -169,8 +187,9 @@ ${JSON.stringify(skippedDates)}
     });
 
     return NextResponse.json({
-      success: true,
-      message: `${created}件のシフトをAIが作成しました`,
+        success: true,
+        message: `${created}件のシフトをAIが作成しました`,
+        notes: parsedResponse.notes ?? [],
     });
   } catch (error) {
     console.error(error);
