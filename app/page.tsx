@@ -448,6 +448,44 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mx-auto max-w-[1800px] space-y-6">
+      <div className="flex flex-wrap gap-3">
+
+        <a
+          href="/stores"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+        >
+          🏪 店舗管理
+        </a>
+
+        <a
+          href="/staff"
+          className="rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+        >
+          👥 スタッフ管理
+        </a>
+
+        <a
+          href="/settings"
+          className="rounded-lg bg-purple-600 px-4 py-2 text-white hover:bg-purple-700"
+        >
+          ⚙ スキル・イベント
+        </a>
+
+        <a
+          href="/submit"
+          className="rounded-lg bg-pink-600 px-4 py-2 text-white hover:bg-pink-700"
+        >
+          📝 希望休提出
+        </a>
+
+        <a
+          href="/chat"
+          className="rounded-lg bg-orange-600 px-4 py-2 text-white hover:bg-orange-700"
+        >
+          💬 ヘルプチャット
+        </a>
+
+      </div>
         <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
