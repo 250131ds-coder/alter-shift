@@ -1,7 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+
+interface StaffRow {
+  id: number;
+  name: string;
+  role: string;
+  storeId: number;
+}
 
 interface DaySchedule {
   type: 'unset' | 'work' | 'off';
@@ -9,7 +16,7 @@ interface DaySchedule {
   startMin: string;
   endHour: string;
   endMin: string;
-  note: string; // 備考用の型を追加
+  note: string;
 }
 
 interface ScheduleState {
@@ -17,77 +24,205 @@ interface ScheduleState {
 }
 
 export default function SubmitPage() {
-  // 現在の日付からデフォルトの年月を設定
   const now = new Date();
-  const [currentYear, setCurrentYear] = useState(now.getFullYear());
-  const [currentMonth, setCurrentMonth] = useState(now.getMonth() + 1); // 1 ~ 12
 
-  // 1か月分のスケジュール入力を保持するState
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(now.getMonth() + 1);
+
+  const [staffs, setStaffs] = useState<StaffRow[]>([]);
+  const [staffId, setStaffId] = useState(0);
+  const [storeId, setStoreId] = useState(0);
+  const [isLoadingStaffs, setIsLoadingStaffs] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [schedule, setSchedule] = useState<ScheduleState>({});
 
-  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')); 
-  const minutes = ['00', '15', '30', '45']; 
+  const hours = Array.from(
+    { length: 24 },
+    (_, i) => String(i).padStart(2, '0')
+  );
 
-  // 年月より日付リストを直接算出
-  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+  const minutes = ['00', '15', '30', '45'];
+
+  useEffect(() => {
+    const fetchStaff = async () => {
+      setIsLoadingStaffs(true);
+
+      try {
+        const res = await fetch('/api/staffs');
+
+        if (!res.ok) return;
+
+        const data: StaffRow[] = await res.json();
+
+        setStaffs(data);
+
+        if (data.length > 0) {
+          setStaffId(data[0].id);
+          setStoreId(data[0].storeId);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsLoadingStaffs(false);
+      }
+    };
+
+    fetchStaff();
+  }, []);
+
+  const daysInMonth = new Date(
+    currentYear,
+    currentMonth,
+    0
+  ).getDate();
+
   const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
-  
+
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const d = i + 1;
-    const dateObj = new Date(currentYear, currentMonth - 1, d);
+
+    const dateObj = new Date(
+      currentYear,
+      currentMonth - 1,
+      d
+    );
+
     const dayOfWeekNum = dateObj.getDay();
+
     const dayOfWeekStr = dayLabels[dayOfWeekNum];
-    const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    const dateStr =
+      `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
     return {
       dateStr,
       dayNum: d,
       label: `${currentMonth}/${d} (${dayOfWeekStr})`,
-      isWeekend: dayOfWeekNum === 0 || dayOfWeekNum === 6,
-      dayOfWeek: dayOfWeekStr
+      dayOfWeek: dayOfWeekStr,
     };
   });
 
-  // 出勤・休みのステータス更新
-  const updateType = (dateStr: string, type: 'work' | 'off') => {
-    setSchedule(prev => ({
+  const updateType = (
+    dateStr: string,
+    type: 'work' | 'off'
+  ) => {
+    setSchedule((prev) => ({
       ...prev,
       [dateStr]: {
-        ...(prev[dateStr] || { startHour: '10', startMin: '00', endHour: '18', endMin: '00', note: '' }),
-        type
-      }
+        ...(prev[dateStr] ?? {
+          startHour: '10',
+          startMin: '00',
+          endHour: '18',
+          endMin: '00',
+          note: '',
+        }),
+        type,
+      },
     }));
   };
 
-  // 時間や備考のテキスト変更共通ハンドラー
-  const handleFieldChange = (dateStr: string, field: keyof DaySchedule, value: string) => {
-    setSchedule(prev => ({
+  const handleFieldChange = (
+    dateStr: string,
+    field: keyof DaySchedule,
+    value: string
+  ) => {
+    setSchedule((prev) => ({
       ...prev,
       [dateStr]: {
-        ...(prev[dateStr] || { type: 'unset', startHour: '10', startMin: '00', endHour: '18', endMin: '00', note: '' }),
-        [field]: value
-      }
+        ...(prev[dateStr] ?? {
+          type: 'unset',
+          startHour: '10',
+          startMin: '00',
+          endHour: '18',
+          endMin: '00',
+          note: '',
+        }),
+        [field]: value,
+      },
     }));
   };
 
-  // 年月の変更
-  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleMonthChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
     const [y, m] = e.target.value.split('-').map(Number);
+
     setCurrentYear(y);
     setCurrentMonth(m);
-    setSchedule({}); // 月が切り替わったら入力をリセット
+
+    setSchedule({});
   };
 
-  // フォーム送信
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
-    alert(`【モック動作】${currentYear}年${currentMonth}月分の1か月シフト希望を送信しました！`);
+
+    if (!staffId || !storeId) {
+      alert('スタッフ情報を取得できていません。しばらくしてから再度お試しください。');
+      return;
+    }
+
+    const requests = Object.entries(schedule);
+
+    if (requests.length === 0) {
+      alert('希望を入力してください');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      for (const [date, current] of requests) {
+
+        if (current.type === 'unset') continue;
+
+        const res = await fetch('/api/shift-request', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            storeId,
+            staffId,
+            date,
+            type: current.type === 'off' ? '希望休' : '通常',
+            startTime:
+              current.type === 'work'
+                ? `${current.startHour}:${current.startMin}`
+                : null,
+            endTime:
+              current.type === 'work'
+                ? `${current.endHour}:${current.endMin}`
+                : null,
+            comment: current.note,
+          }),
+        });
+
+        const body = await res.json();
+
+        if (!res.ok) {
+          alert(body.error ?? '希望休登録失敗');
+          return;
+        }
+      }
+
+      alert('希望を提出しました');
+
+      setSchedule({});
+    } catch (error) {
+      console.error(error);
+      alert('送信エラー');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 flex justify-center items-start text-gray-800">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-        
+
         {/* ヘッダー */}
         <div className="bg-purple-600 p-5 text-white text-center">
           <h1 className="text-lg font-bold">🌌 1か月シフト提出</h1>
@@ -99,17 +234,42 @@ export default function SubmitPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">氏名</label>
-              <input 
-                type="text" 
-                placeholder="テストスタッフ" 
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                required 
-              />
+              <select
+                value={staffId}
+                disabled={isLoadingStaffs || staffs.length === 0}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+
+                  setStaffId(id);
+
+                  const staff = staffs.find((s) => s.id === id);
+
+                  if (staff) {
+                    setStoreId(staff.storeId);
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-100 disabled:text-gray-400"
+              >
+                {isLoadingStaffs && (
+                  <option value={0}>読み込み中...</option>
+                )}
+                {!isLoadingStaffs && staffs.length === 0 && (
+                  <option value={0}>スタッフがいません</option>
+                )}
+                {staffs.map((staff) => (
+                  <option
+                    key={staff.id}
+                    value={staff.id}
+                  >
+                    {staff.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">対象月</label>
-              <select 
-                value={`${currentYear}-${currentMonth}`} 
+              <select
+                value={`${currentYear}-${currentMonth}`}
                 onChange={handleMonthChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
@@ -126,11 +286,11 @@ export default function SubmitPage() {
             <label className="block text-xs font-bold text-gray-500 mb-2">
               {currentMonth}月 スケジュール一覧 ({days.length}日間)
             </label>
-            
+
             <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1 border border-gray-100 p-2 bg-gray-50/50 rounded-xl">
               {days.map((day) => {
                 const current = schedule[day.dateStr] || { type: 'unset', startHour: '10', startMin: '00', endHour: '18', endMin: '00', note: '' };
-                
+
                 let dayColor = 'text-gray-700';
                 if (day.dayOfWeek === '土') dayColor = 'text-blue-600';
                 if (day.dayOfWeek === '日') dayColor = 'text-red-500';
@@ -142,16 +302,16 @@ export default function SubmitPage() {
                         {day.label}
                       </span>
                       <div className="flex gap-1">
-                        <button 
-                          type="button" 
-                          onClick={() => updateType(day.dateStr, 'work')} 
+                        <button
+                          type="button"
+                          onClick={() => updateType(day.dateStr, 'work')}
                           className={`px-2 py-0.5 text-[11px] font-semibold rounded transition-colors ${current.type === 'work' ? 'bg-purple-600 text-white' : 'bg-gray-100 border text-gray-600 hover:bg-gray-200'}`}
                         >
                           👍出勤
                         </button>
-                        <button 
-                          type="button" 
-                          onClick={() => updateType(day.dateStr, 'off')} 
+                        <button
+                          type="button"
+                          onClick={() => updateType(day.dateStr, 'off')}
                           className={`px-2 py-0.5 text-[11px] font-semibold rounded transition-colors ${current.type === 'off' ? 'bg-red-500 text-white' : 'bg-gray-100 border text-gray-600 hover:bg-gray-200'}`}
                         >
                           💤休み
@@ -163,17 +323,17 @@ export default function SubmitPage() {
                     {current.type === 'work' && (
                       <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 flex items-center justify-center gap-1 animate-in fade-in duration-100">
                         <div className="flex items-center bg-white border border-gray-200 rounded px-1">
-                          <select 
-                            value={current.startHour} 
-                            onChange={(e) => handleFieldChange(day.dateStr, 'startHour', e.target.value)} 
+                          <select
+                            value={current.startHour}
+                            onChange={(e) => handleFieldChange(day.dateStr, 'startHour', e.target.value)}
                             className="bg-transparent py-0.5 text-xs font-bold text-gray-700 outline-none cursor-pointer px-1"
                           >
                             {hours.map(h => <option key={h} value={h}>{h}</option>)}
                           </select>
                           <span className="text-[10px] text-gray-400">:</span>
-                          <select 
-                            value={current.startMin} 
-                            onChange={(e) => handleFieldChange(day.dateStr, 'startMin', e.target.value)} 
+                          <select
+                            value={current.startMin}
+                            onChange={(e) => handleFieldChange(day.dateStr, 'startMin', e.target.value)}
                             className="bg-transparent py-0.5 text-xs font-bold text-gray-700 outline-none cursor-pointer px-1"
                           >
                             {minutes.map(m => <option key={m} value={m}>{m}</option>)}
@@ -181,17 +341,17 @@ export default function SubmitPage() {
                         </div>
                         <span className="text-[10px] text-gray-400">〜</span>
                         <div className="flex items-center bg-white border border-gray-200 rounded px-1">
-                          <select 
-                            value={current.endHour} 
-                            onChange={(e) => handleFieldChange(day.dateStr, 'endHour', e.target.value)} 
+                          <select
+                            value={current.endHour}
+                            onChange={(e) => handleFieldChange(day.dateStr, 'endHour', e.target.value)}
                             className="bg-transparent py-0.5 text-xs font-bold text-gray-700 outline-none cursor-pointer px-1"
                           >
                             {hours.map(h => <option key={h} value={h}>{h}</option>)}
                           </select>
                           <span className="text-[10px] text-gray-400">:</span>
-                          <select 
-                            value={current.endMin} 
-                            onChange={(e) => handleFieldChange(day.dateStr, 'endMin', e.target.value)} 
+                          <select
+                            value={current.endMin}
+                            onChange={(e) => handleFieldChange(day.dateStr, 'endMin', e.target.value)}
                             className="bg-transparent py-0.5 text-xs font-bold text-gray-700 outline-none cursor-pointer px-1"
                           >
                             {minutes.map(m => <option key={m} value={m}>{m}</option>)}
@@ -207,7 +367,7 @@ export default function SubmitPage() {
                       </div>
                     )}
 
-                    {/* 📝 追加された備考欄（出勤・休み問わず何か連絡があれば入力可能） */}
+                    {/* 📝 備考欄 */}
                     <div className="pt-1">
                       <input
                         type="text"
@@ -223,11 +383,12 @@ export default function SubmitPage() {
             </div>
           </div>
 
-          <button 
-            type="submit" 
-            className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm shadow transition-colors"
+          <button
+            type="submit"
+            disabled={isSubmitting || isLoadingStaffs}
+            className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm shadow transition-colors"
           >
-            {currentMonth}月分の希望を提出する
+            {isSubmitting ? '送信中...' : `${currentMonth}月分の希望を提出する`}
           </button>
         </form>
 
