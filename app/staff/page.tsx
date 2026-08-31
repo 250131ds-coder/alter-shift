@@ -27,7 +27,7 @@ export default function StaffPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showInactiveStores, setShowInactiveStores] = useState(false);
 
-  const availableSkills = ['レジ', 'VMD', '検品', '接客', 'キッチン', 'ホール'];
+    const [availableSkills, setAvailableSkills] = useState<string[]>([]);
 
   const [name, setName] = useState('');
   const [role, setRole] = useState('アルバイト');
@@ -37,32 +37,35 @@ export default function StaffPage() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [staffsRes, storesRes] = await Promise.all([
-        fetch(`/api/staffs?includeInactiveStores=${showInactiveStores}`),
-        fetch('/api/stores'),
-      ]);
+    const fetchData = useCallback(async () => {
+      try {
+        const [staffsRes, storesRes, skillsRes] = await Promise.all([
+          fetch(`/api/staffs?includeInactiveStores=${showInactiveStores}`),
+          fetch('/api/stores'),
+          fetch('/api/skills'),
+        ]);
 
-      if (!staffsRes.ok || !storesRes.ok) {
-        throw new Error('データ取得に失敗しました');
+        if (!staffsRes.ok || !storesRes.ok || !skillsRes.ok) {
+          throw new Error('データ取得に失敗しました');
+        }
+
+        const staffsData = await staffsRes.json();
+        const storesData = await storesRes.json();
+        const skillsData: { id: number; name: string }[] = await skillsRes.json();
+
+        setStaffList(staffsData);
+        setStores(storesData);
+        setAvailableSkills(skillsData.map((s) => s.name));
+
+        if (storesData.length > 0) {
+          setStoreId((prev) => prev || String(storesData[0].id));
+        }
+      } catch (error) {
+        console.error('データ取得エラー:', error);
+        alert('スタッフまたは店舗データの取得に失敗しました。');
+      } finally {
+        setIsLoading(false);
       }
-
-      const staffsData = await staffsRes.json();
-      const storesData = await storesRes.json();
-
-      setStaffList(staffsData);
-      setStores(storesData);
-
-      if (storesData.length > 0) {
-        setStoreId((prev) => prev || String(storesData[0].id));
-      }
-    } catch (error) {
-      console.error('データ取得エラー:', error);
-      alert('スタッフまたは店舗データの取得に失敗しました。');
-    } finally {
-      setIsLoading(false);
-    }
   }, [showInactiveStores]);
 
   useEffect(() => {
