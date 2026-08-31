@@ -157,8 +157,8 @@ export async function POST(req: NextRequest) {
       const [endH, endM] = item.endTime.split(":").map(Number);
 
       const date = new Date(Date.UTC(y, m - 1, d));
-      const startAt = new Date(Date.UTC(y, m - 1, d, startH, startM));
-      const endAt = new Date(Date.UTC(y, m - 1, d, endH, endM));
+      const startAt = new Date(y, m - 1, d, startH, startM);
+      const endAt = new Date(y, m - 1, d, endH, endM);
 
       try {
         await prisma.shift.create({
