@@ -472,6 +472,13 @@ export default function Page() {
         </a>
 
         <a
+          href="/calendar"
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
+        >
+          📅 カレンダー
+        </a>
+
+        <a
           href="/submit"
           className="rounded-lg bg-pink-600 px-4 py-2 text-white hover:bg-pink-700"
         >
