@@ -625,7 +625,7 @@ export default function Page() {
               onClick={generateAiShift}
               className="rounded bg-purple-600 px-4 py-2 text-white"
             >
-              AIシフト作成
+              AI自動シフト作成
             </button>
           </div>
 
