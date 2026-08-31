@@ -13,6 +13,7 @@ model Store {
   name             String
   areaName         String?           @map("area_name")
   managerName      String?           @map("manager_name")
+  isActive         Boolean           @default(true) @map("is_active")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   staffs           Staff[]

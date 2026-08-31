@@ -1,12 +1,18 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
 /**
  * 1. 【Read】店舗一覧の取得 (GET)
+ * デフォルトでは有効な店舗のみ返す。
+ * ?includeInactive=true を付けると無効化された店舗も含めて返す。
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const includeInactive = searchParams.get('includeInactive') === 'true'
+
     const stores = await prisma.store.findMany({
+      where: includeInactive ? {} : { isActive: true },
       orderBy: {
         id: 'asc'
       }
@@ -15,7 +21,7 @@ export async function GET() {
   } catch (error) {
     console.error('店舗一覧取得エラー:', error)
     return NextResponse.json(
-      { error: '店舗一覧の取得に失敗しました。' }, 
+      { error: '店舗一覧の取得に失敗しました。' },
       { status: 500 }
     )
   }
@@ -29,15 +35,13 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { name, areaName, managerName } = body
 
-    // 必須入力チェック
     if (!name) {
       return NextResponse.json(
-        { error: '店舗名は必須項目です。' }, 
+        { error: '店舗名は必須項目です。' },
         { status: 400 }
       )
     }
 
-    // Prismaを使ってMySQLに店舗を登録
     const newStore = await prisma.store.create({
       data: {
         name,
@@ -50,7 +54,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('店舗登録エラー:', error)
     return NextResponse.json(
-      { error: '店舗の登録に失敗しました。' }, 
+      { error: '店舗の登録に失敗しました。' },
       { status: 500 }
     )
   }

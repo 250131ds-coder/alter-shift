@@ -544,7 +544,7 @@ export default function Page() {
         <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <h2 className="mb-4 text-lg font-bold">シフト作成</h2>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
             <div className="space-y-2">
               <label className="text-sm font-medium">スタッフID</label>
               <select
@@ -609,18 +609,6 @@ export default function Page() {
                 className="w-full rounded-md border border-slate-300 px-3 py-2"
                 disabled={form.type === '希望休' || form.type === '公休'}
               />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">ステータス</label>
-              <select
-                value={form.status}
-                onChange={(e) => handleChangeForm('status', e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2"
-              >
-                <option value="draft">draft</option>
-                <option value="published">published</option>
-              </select>
             </div>
           </div>
 

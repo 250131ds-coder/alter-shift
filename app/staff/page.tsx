@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 
 interface Store {
@@ -17,6 +17,7 @@ interface Staff {
   storeId: number;
   store?: Store;
   storeName?: string | null;
+  storeIsActive?: boolean;
   skills?: string[];
 }
 
@@ -24,6 +25,7 @@ export default function StaffPage() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showInactiveStores, setShowInactiveStores] = useState(false);
 
   const availableSkills = ['レジ', 'VMD', '検品', '接客', 'キッチン', 'ホール'];
 
@@ -35,41 +37,42 @@ export default function StaffPage() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [staffsRes, storesRes] = await Promise.all([
-          fetch('/api/staffs'),
-          fetch('/api/stores'),
-        ]);
+  const fetchData = useCallback(async () => {
+    try {
+      const [staffsRes, storesRes] = await Promise.all([
+        fetch(`/api/staffs?includeInactiveStores=${showInactiveStores}`),
+        fetch('/api/stores'),
+      ]);
 
-        if (!staffsRes.ok || !storesRes.ok) {
-          throw new Error('データ取得に失敗しました');
-        }
-
-        const staffsData = await staffsRes.json();
-        const storesData = await storesRes.json();
-
-        setStaffList(staffsData);
-        setStores(storesData);
-
-        if (storesData.length > 0) {
-          setStoreId((prev) => prev || String(storesData[0].id));
-        }
-      } catch (error) {
-        console.error('データ取得エラー:', error);
-        alert('スタッフまたは店舗データの取得に失敗しました。');
-      } finally {
-        setIsLoading(false);
+      if (!staffsRes.ok || !storesRes.ok) {
+        throw new Error('データ取得に失敗しました');
       }
-    };
 
+      const staffsData = await staffsRes.json();
+      const storesData = await storesRes.json();
+
+      setStaffList(staffsData);
+      setStores(storesData);
+
+      if (storesData.length > 0) {
+        setStoreId((prev) => prev || String(storesData[0].id));
+      }
+    } catch (error) {
+      console.error('データ取得エラー:', error);
+      alert('スタッフまたは店舗データの取得に失敗しました。');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showInactiveStores]);
+
+  useEffect(() => {
+    setIsLoading(true);
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const refreshStaffList = async () => {
     try {
-      const res = await fetch('/api/staffs');
+      const res = await fetch(`/api/staffs?includeInactiveStores=${showInactiveStores}`);
       if (!res.ok) throw new Error('スタッフ一覧の再取得に失敗しました');
 
       const data = await res.json();
@@ -368,9 +371,20 @@ export default function StaffPage() {
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 xl:col-span-2 overflow-hidden">
-          <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>📋</span> 所属スタッフ一覧
-          </h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <span>📋</span> 所属スタッフ一覧
+            </h2>
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showInactiveStores}
+                onChange={(e) => setShowInactiveStores(e.target.checked)}
+                className="cursor-pointer"
+              />
+              閉店店舗のスタッフも表示する
+            </label>
+          </div>
 
           <div className="overflow-x-auto">
             {isLoading ? (
@@ -397,7 +411,9 @@ export default function StaffPage() {
                       className={
                         editingId === staff.id
                           ? 'bg-amber-50/50 hover:bg-amber-50'
-                          : 'hover:bg-gray-50'
+                          : staff.storeIsActive === false
+                            ? 'opacity-60 hover:bg-gray-50'
+                            : 'hover:bg-gray-50'
                       }
                     >
                       <td className="p-3">
@@ -409,6 +425,11 @@ export default function StaffPage() {
                         <span className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-100 text-xs font-bold rounded">
                           {staff.store?.name || staff.storeName || `店舗ID: ${staff.storeId}`}
                         </span>
+                        {staff.storeIsActive === false && (
+                          <span className="ml-1.5 px-2 py-0.5 bg-gray-200 text-gray-600 text-[10px] font-semibold rounded">
+                            閉店
+                          </span>
+                        )}
                       </td>
 
                       <td className="p-3 text-gray-600 text-xs">

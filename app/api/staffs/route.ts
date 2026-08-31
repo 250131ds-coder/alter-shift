@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const includeInactiveStores = searchParams.get('includeInactiveStores') === 'true';
+
     const staffs = await prisma.staff.findMany({
+      where: includeInactiveStores
+        ? {}
+        : { store: { isActive: true } },
       include: {
         store: true,
         skills: {
@@ -26,6 +32,7 @@ export async function GET() {
       phone: staff.phone,
       storeId: staff.storeId,
       storeName: staff.store?.name ?? null,
+      storeIsActive: staff.store?.isActive ?? true,
       skills: staff.skills.map((s) => s.skill.name),
     }));
 
@@ -108,6 +115,7 @@ export async function POST(request: Request) {
         phone: createdStaff.phone,
         storeId: createdStaff.storeId,
         storeName: createdStaff.store?.name ?? null,
+        storeIsActive: createdStaff.store?.isActive ?? true,
         skills: createdStaff.skills.map((s) => s.skill.name),
       },
       { status: 201 }
