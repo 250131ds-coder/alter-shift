@@ -149,7 +149,10 @@ const initialForm = {
  * Page
  * ========================= */
 export default function Page() {
-  const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 5, 1));
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState(11);
