@@ -53,16 +53,32 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // ③ 既存シフト（埋まっている日を把握）
+    // ③ 既存シフト（希望休・公休・通常・応援 すべて含む）
     const existingShifts = await prisma.shift.findMany({
       where: {
         storeId: Number(storeId),
         date: { gte: rangeStart, lte: rangeEnd },
       },
     });
-    const existingDates = new Set(
-      existingShifts.map((s) => s.date.toISOString().slice(0, 10))
+
+    // 「スタッフ×日付」単位で既に何らかのレコードがある組み合わせ（重複作成を避けるため）
+    const existingStaffDateSet = new Set(
+      existingShifts.map(
+        (s) => `${s.staffId}_${s.date.toISOString().slice(0, 10)}`
+      )
     );
+
+    // 希望休・公休（＝出勤させてはいけない日）をスタッフごとに整理
+    const unavailabilityByStaff = new Map<number, string[]>();
+
+    for (const s of existingShifts) {
+      if (s.type === "希望休" || s.type === "公休") {
+        const dateStr = s.date.toISOString().slice(0, 10);
+        const list = unavailabilityByStaff.get(s.staffId) ?? [];
+        list.push(dateStr);
+        unavailabilityByStaff.set(s.staffId, list);
+      }
+    }
 
     // ④ 曜日別営業時間
     const businessHours = await prisma.storeBusinessHour.findMany({
@@ -80,7 +96,6 @@ export async function POST(req: NextRequest) {
       const bh = hoursByDow.get(dow);
 
       if (!bh) {
-        // 未設定の曜日はデフォルト 09:00〜18:00
         return { date: dateStr, startTime: "09:00", endTime: "18:00" };
       }
 
@@ -102,6 +117,7 @@ export async function POST(req: NextRequest) {
       id: s.id,
       name: s.name,
       skills: s.skills.map((sk) => sk.skill.name),
+      unavailableDates: unavailabilityByStaff.get(s.id) ?? [],
     }));
 
     const eventData = storeEvents.map((e) => ({
@@ -114,13 +130,13 @@ export async function POST(req: NextRequest) {
         })) ?? [],
     }));
 
-    const skippedDates = Array.from(existingDates);
-
     const prompt = `
     あなたはシフト作成アシスタントです。以下の条件で${year}年${month + 1}月（1日〜${daysInMonth}日）のシフト案を作成してください。
 
-    # スタッフ一覧（id, 名前, 保有スキル）
+    # スタッフ一覧（id, 名前, 保有スキル, 出勤させてはいけない日付一覧 unavailableDates）
     ${JSON.stringify(staffData, null, 2)}
+    ※ unavailableDatesに記載された日付は、そのスタッフの希望休・公休が既に確定しています。そのスタッフをその日に絶対に配置しないでください。
+    ※ ただし、他のスタッフはその日に配置して構いません。unavailableDatesはスタッフ単位の制約であり、日付全体を除外するものではありません。
 
     # 各日の基準となる出退勤時刻（referenceHours）
     ${JSON.stringify(referenceHours, null, 2)}
@@ -129,19 +145,23 @@ export async function POST(req: NextRequest) {
 
     # イベント・必要人数（設定のある日のみ）
     ${JSON.stringify(eventData, null, 2)}
-    ※ 記載のない日は「通常営業」とし、上記referenceHoursの時間で最低1名を配置してください（スキル指定なし）。
+    ※ 記載のない日は「通常営業」とし、上記referenceHoursの時間で最低1名を配置してください（スキル指定なし。ただしunavailableDatesに該当するスタッフは除く）。
     ※ イベントが設定されている日も、時間帯は同じくreferenceHoursの値を基本として使用してください。
-
-    # 既にシフトが確定していてスキップすべき日
-    ${JSON.stringify(skippedDates)}
 
     # 【最重要】スキル条件について
     - イベントで特定スキルの必要人数が指定されている日は、必ずそのスキルを保有するスタッフのみを配置してください。
     - 例：「レジ2名」が必要な日は、staffDataのskills配列に "レジ" を含むスタッフを2名選んでください。skillsに"レジ"がないスタッフは絶対に選ばないでください。
-    - 指定されたスキルを満たすスタッフが人数分いない場合は、無理に埋めず、不足分は配置しないでください（0名〜可能な人数のみ配置）。この場合、その日について「スキル不足のため○名しか配置できません」という情報を後述のnotesに含めてください。
+    - 指定されたスキルを満たすスタッフが人数分いない場合（unavailableDatesによる不足も含む）は、無理に埋めず、不足分は配置しないでください（0名〜可能な人数のみ配置）。この場合、その日について「スキル不足のため○名しか配置できません」という情報を後述のnotesに含めてください。
+
+    # 【最重要】公平な分配について
+    - スキル条件・unavailableDatesの制約を満たした上で、スタッフ間の月間の出勤日数・出勤時間ができるだけ均等になるように配置してください。
+    - 特定のスタッフだけに出勤が偏り、他のスタッフの出勤が極端に少なくなることは避けてください。
+    - 同一スタッフの連続勤務は、原則5日以内に収めてください。それ以上連続させる場合は、他に選択肢がない(該当スキルを持つスタッフが他にいない等)場合のみにしてください。
+    - スキルが指定されていない「通常営業」の日に誰を配置するかは特に、その時点までに出勤日数が少ないスタッフを優先的に選んでください。
+    - 【厳守】unavailableDatesが月内の全日を占めていないスタッフを、出勤0日のまま出力することは禁止です。「均等配分」を理由にスタッフを丸ごと除外しないでください。全スタッフに最低1日以上は必ず配置してください。
 
     # 出力ルール
-    - 上記のスキップ対象日は絶対に含めないこと
+    - unavailableDatesに該当するスタッフ×日付の組み合わせは、shiftsに絶対に含めないこと
     - 出力は以下のJSON形式のみ。説明文・Markdown記法(\`\`\`など)は一切含めないこと
 
     {
@@ -152,13 +172,41 @@ export async function POST(req: NextRequest) {
     }
     `;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
-    const result = await model.generateContent(prompt);
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+
+    async function generateWithRetry(maxRetries = 3) {
+      let lastError: unknown;
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await model.generateContent(prompt);
+        } catch (err) {
+          lastError = err;
+
+          const status =
+            err instanceof Object && "status" in err
+              ? (err as { status?: number }).status
+              : undefined;
+
+          // 503(混雑)の場合のみ待ってリトライ。それ以外のエラーは即座に投げる
+          if (status !== 503 || attempt === maxRetries - 1) {
+            throw err;
+          }
+
+          const waitMs = 2000 * (attempt + 1); // 2秒, 4秒, 6秒...
+          console.log(`Gemini 503エラー、${waitMs}ms後にリトライします (試行 ${attempt + 1}/${maxRetries})`);
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+      }
+
+      throw lastError;
+    }
+
+    const result = await generateWithRetry();
     const rawText = result.response.text();
 
     console.log("=== Gemini raw response ===", rawText);
 
-    // Markdownのコードフェンスが混ざった場合の保険
     const cleaned = rawText.replace(/```json|```/g, "").trim();
 
     let parsedResponse: {
@@ -194,12 +242,19 @@ export async function POST(req: NextRequest) {
       console.log("=== Gemini notes ===", parsedResponse.notes);
     }
 
-    // ⑦ DBに反映（既存日・不正データはスキップ）
+    // ⑦ DBに反映（スタッフ×日付単位で既存があればスキップ、不正データもスキップ）
     const validStaffIds = new Set(staffs.map((s) => s.id));
     let created = 0;
+    let skippedUnavailable = 0;
 
     for (const item of shiftPlan) {
-      if (existingDates.has(item.date)) continue;
+      const key = `${item.staffId}_${item.date}`;
+
+      if (existingStaffDateSet.has(key)) {
+        skippedUnavailable++;
+        continue;
+      }
+
       if (!validStaffIds.has(item.staffId)) continue;
 
       const [y, m, d] = item.date.split("-").map(Number);
@@ -223,6 +278,7 @@ export async function POST(req: NextRequest) {
           },
         });
         created++;
+        existingStaffDateSet.add(key);
       } catch {
         // unique制約違反（同時実行等）はスキップ
       }
@@ -238,7 +294,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
         success: true,
-        message: `${created}件のシフトをAIが作成しました`,
+        message: `${created}件のシフトをAIが作成しました${
+          skippedUnavailable > 0
+            ? `（希望休等との重複により${skippedUnavailable}件はスキップ）`
+            : ""
+        }`,
         notes: parsedResponse.notes ?? [],
     });
   } catch (error) {
