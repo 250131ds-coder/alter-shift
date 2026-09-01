@@ -11,6 +11,17 @@ interface Store {
   isActive: boolean;
 }
 
+interface BusinessHourRow {
+  dayOfWeek: number;
+  openTime: string;
+  closeTime: string;
+  prepMinutes: number;
+  cleanupMinutes: number;
+  configured: boolean;
+}
+
+const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
 export default function StoresPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [name, setName] = useState('');
@@ -28,6 +39,13 @@ export default function StoresPage() {
   const [editAreaName, setEditAreaName] = useState('');
   const [editManagerName, setEditManagerName] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // 営業時間モーダル用
+  const [isHoursModalOpen, setIsHoursModalOpen] = useState(false);
+  const [hoursStore, setHoursStore] = useState<Store | null>(null);
+  const [businessHours, setBusinessHours] = useState<BusinessHourRow[]>([]);
+  const [isLoadingHours, setIsLoadingHours] = useState(false);
+  const [isSavingHours, setIsSavingHours] = useState(false);
 
   const fetchStores = async () => {
     try {
@@ -192,6 +210,88 @@ export default function StoresPage() {
     }
   };
 
+  const openHoursModal = async (store: Store) => {
+    setHoursStore(store);
+    setIsHoursModalOpen(true);
+    setIsLoadingHours(true);
+
+    try {
+      const res = await fetch(`/api/stores/${store.id}/business-hours`);
+
+      if (!res.ok) {
+        alert('営業時間の取得に失敗しました');
+        setIsHoursModalOpen(false);
+        return;
+      }
+
+      const data: BusinessHourRow[] = await res.json();
+      setBusinessHours(data);
+    } catch (error) {
+      console.error(error);
+      alert('通信エラーが発生しました');
+      setIsHoursModalOpen(false);
+    } finally {
+      setIsLoadingHours(false);
+    }
+  };
+
+  const handleHourFieldChange = (
+    dayOfWeek: number,
+    field: 'openTime' | 'closeTime' | 'prepMinutes' | 'cleanupMinutes',
+    value: string
+  ) => {
+    setBusinessHours((prev) =>
+      prev.map((row) =>
+        row.dayOfWeek === dayOfWeek
+          ? {
+              ...row,
+              [field]:
+                field === 'prepMinutes' || field === 'cleanupMinutes'
+                  ? Number(value) || 0
+                  : value,
+            }
+          : row
+      )
+    );
+  };
+
+  const handleSaveHours = async () => {
+    if (!hoursStore) return;
+
+    setIsSavingHours(true);
+
+    try {
+      const res = await fetch(`/api/stores/${hoursStore.id}/business-hours`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hours: businessHours.map((h) => ({
+            dayOfWeek: h.dayOfWeek,
+            openTime: h.openTime,
+            closeTime: h.closeTime,
+            prepMinutes: h.prepMinutes,
+            cleanupMinutes: h.cleanupMinutes,
+          })),
+        }),
+      });
+
+      const body = await res.json();
+
+      if (!res.ok) {
+        alert(body.error ?? '営業時間の保存に失敗しました');
+        return;
+      }
+
+      alert('✅ 営業時間を保存しました');
+      setIsHoursModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      alert('通信エラーが発生しました');
+    } finally {
+      setIsSavingHours(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6 text-gray-800">
       <div className="mb-4">
@@ -282,7 +382,7 @@ export default function StoresPage() {
             ) : stores.length === 0 ? (
               <p className="text-sm text-gray-400 italic p-4">登録されている店舗はありません。左のフォームから追加してください。</p>
             ) : (
-              <table className="w-full min-w-[600px] text-left border-collapse">
+              <table className="w-full min-w-[650px] text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-100 border-b border-gray-200 text-xs font-bold text-gray-600 uppercase">
                     <th className="p-3">ID</th>
@@ -316,13 +416,20 @@ export default function StoresPage() {
                         )}
                       </td>
                       <td className="p-3">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <button
                             type="button"
                             onClick={() => openEditModal(store)}
                             className="text-xs text-blue-600 hover:underline font-medium"
                           >
                             編集
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openHoursModal(store)}
+                            className="text-xs text-indigo-600 hover:underline font-medium"
+                          >
+                            営業時間設定
                           </button>
                           {store.isActive ? (
                             <button
@@ -408,6 +515,110 @@ export default function StoresPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 営業時間モーダル */}
+      {isHoursModalOpen && hoursStore && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl border border-gray-200 max-w-2xl w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">🕐 営業時間設定</h3>
+            <p className="text-xs text-gray-400 mb-4">{hoursStore.name}</p>
+
+            {isLoadingHours ? (
+              <p className="text-sm text-gray-500 py-6 text-center">読み込み中...</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-bold text-gray-600">
+                        <th className="p-2">曜日</th>
+                        <th className="p-2">開店時刻</th>
+                        <th className="p-2">閉店時刻</th>
+                        <th className="p-2">準備(分前)</th>
+                        <th className="p-2">片付け(分後)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm divide-y divide-gray-100">
+                      {businessHours.map((row) => (
+                        <tr key={row.dayOfWeek}>
+                          <td className="p-2 font-bold text-gray-700">
+                            {DOW_LABELS[row.dayOfWeek]}曜日
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="time"
+                              value={row.openTime}
+                              onChange={(e) =>
+                                handleHourFieldChange(row.dayOfWeek, 'openTime', e.target.value)
+                              }
+                              className="px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="time"
+                              value={row.closeTime}
+                              onChange={(e) =>
+                                handleHourFieldChange(row.dayOfWeek, 'closeTime', e.target.value)
+                              }
+                              className="px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="number"
+                              min={0}
+                              value={row.prepMinutes}
+                              onChange={(e) =>
+                                handleHourFieldChange(row.dayOfWeek, 'prepMinutes', e.target.value)
+                              }
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="number"
+                              min={0}
+                              value={row.cleanupMinutes}
+                              onChange={(e) =>
+                                handleHourFieldChange(row.dayOfWeek, 'cleanupMinutes', e.target.value)
+                              }
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="text-[11px] text-gray-400 mt-3">
+                  開店・閉店時刻を両方空欄にすると「その曜日は営業時間未設定」として扱われ、AIシフト作成時はデフォルト（09:00〜18:00）が使われます。
+                </p>
+
+                <div className="flex gap-2 justify-end pt-4 border-t border-gray-100 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsHoursModalOpen(false)}
+                    disabled={isSavingHours}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveHours}
+                    disabled={isSavingHours}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white text-xs font-semibold rounded-lg shadow"
+                  >
+                    {isSavingHours ? '保存中...' : '営業時間を保存'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

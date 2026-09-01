@@ -4,6 +4,17 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function minutesToTimeStr(totalMinutes: number) {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  return `${pad2(h)}:${pad2(m)}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { storeId, targetMonth } = await req.json();
@@ -53,7 +64,40 @@ export async function POST(req: NextRequest) {
       existingShifts.map((s) => s.date.toISOString().slice(0, 10))
     );
 
-    // ④ Geminiに渡すデータを整形
+    // ④ 曜日別営業時間
+    const businessHours = await prisma.storeBusinessHour.findMany({
+      where: { storeId: Number(storeId) },
+    });
+    const hoursByDow = new Map(businessHours.map((h) => [h.dayOfWeek, h]));
+
+    // ⑤ 対象月の各日について、その曜日の営業時間から実際の出退勤時刻を計算
+    const referenceHours = Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1;
+      const dateObj = new Date(year, month, d);
+      const dow = dateObj.getDay();
+      const dateStr = `${year}-${pad2(month + 1)}-${pad2(d)}`;
+
+      const bh = hoursByDow.get(dow);
+
+      if (!bh) {
+        // 未設定の曜日はデフォルト 09:00〜18:00
+        return { date: dateStr, startTime: "09:00", endTime: "18:00" };
+      }
+
+      const [oh, om] = bh.openTime.split(":").map(Number);
+      const [ch, cm] = bh.closeTime.split(":").map(Number);
+
+      const startTotal = oh * 60 + om - bh.prepMinutes;
+      const endTotal = ch * 60 + cm + bh.cleanupMinutes;
+
+      return {
+        date: dateStr,
+        startTime: minutesToTimeStr(startTotal),
+        endTime: minutesToTimeStr(endTotal),
+      };
+    });
+
+    // ⑥ Geminiに渡すデータを整形
     const staffData = staffs.map((s) => ({
       id: s.id,
       name: s.name,
@@ -78,9 +122,15 @@ export async function POST(req: NextRequest) {
     # スタッフ一覧（id, 名前, 保有スキル）
     ${JSON.stringify(staffData, null, 2)}
 
+    # 各日の基準となる出退勤時刻（referenceHours）
+    ${JSON.stringify(referenceHours, null, 2)}
+    ※ startTime・endTimeは、その日の曜日の店舗営業時間・開店準備時間・閉店後片付け時間から既に計算済みの値です。
+    ※ 通常出勤のシフトを作成する際は、この日付に対応するstartTime・endTimeを必ずそのまま使用してください。自分で時間を計算したり、09:00〜18:00などの一般的な時間を推測で使わないでください。
+
     # イベント・必要人数（設定のある日のみ）
     ${JSON.stringify(eventData, null, 2)}
-    ※ 記載のない日は「通常営業」とし、最低1名を配置してください（スキル指定なし）。
+    ※ 記載のない日は「通常営業」とし、上記referenceHoursの時間で最低1名を配置してください（スキル指定なし）。
+    ※ イベントが設定されている日も、時間帯は同じくreferenceHoursの値を基本として使用してください。
 
     # 既にシフトが確定していてスキップすべき日
     ${JSON.stringify(skippedDates)}
@@ -144,7 +194,7 @@ export async function POST(req: NextRequest) {
       console.log("=== Gemini notes ===", parsedResponse.notes);
     }
 
-    // ⑤ DBに反映（既存日・不正データはスキップ）
+    // ⑦ DBに反映（既存日・不正データはスキップ）
     const validStaffIds = new Set(staffs.map((s) => s.id));
     let created = 0;
 
