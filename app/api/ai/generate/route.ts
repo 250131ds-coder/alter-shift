@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
     const month = base.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    // 対象月の範囲（UTC基準で統一）
     const rangeStart = new Date(Date.UTC(year, month, 1));
     const rangeEnd = new Date(Date.UTC(year, month, daysInMonth));
 
@@ -61,14 +60,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 「スタッフ×日付」単位で既に何らかのレコードがある組み合わせ（重複作成を避けるため）
     const existingStaffDateSet = new Set(
       existingShifts.map(
         (s) => `${s.staffId}_${s.date.toISOString().slice(0, 10)}`
       )
     );
 
-    // 希望休・公休（＝出勤させてはいけない日）をスタッフごとに整理
     const unavailabilityByStaff = new Map<number, string[]>();
 
     for (const s of existingShifts) {
@@ -80,13 +77,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ④ 曜日別営業時間
+    // ④ 曜日別営業時間（定休日情報も含む）
     const businessHours = await prisma.storeBusinessHour.findMany({
       where: { storeId: Number(storeId) },
     });
     const hoursByDow = new Map(businessHours.map((h) => [h.dayOfWeek, h]));
 
-    // ⑤ 対象月の各日について、その曜日の営業時間から実際の出退勤時刻を計算
+    // ⑤ 対象月の各日について、定休日かどうか・実際の出退勤時刻を計算
+    const closedDates: string[] = [];
+
     const referenceHours = Array.from({ length: daysInMonth }, (_, i) => {
       const d = i + 1;
       const dateObj = new Date(year, month, d);
@@ -95,8 +94,13 @@ export async function POST(req: NextRequest) {
 
       const bh = hoursByDow.get(dow);
 
+      if (bh?.isClosed) {
+        closedDates.push(dateStr);
+        return { date: dateStr, isClosed: true, startTime: null, endTime: null };
+      }
+
       if (!bh) {
-        return { date: dateStr, startTime: "09:00", endTime: "18:00" };
+        return { date: dateStr, isClosed: false, startTime: "09:00", endTime: "18:00" };
       }
 
       const [oh, om] = bh.openTime.split(":").map(Number);
@@ -107,6 +111,7 @@ export async function POST(req: NextRequest) {
 
       return {
         date: dateStr,
+        isClosed: false,
         startTime: minutesToTimeStr(startTotal),
         endTime: minutesToTimeStr(endTotal),
       };
@@ -120,15 +125,18 @@ export async function POST(req: NextRequest) {
       unavailableDates: unavailabilityByStaff.get(s.id) ?? [],
     }));
 
-    const eventData = storeEvents.map((e) => ({
-      date: e.date.toISOString().slice(0, 10),
-      title: e.title,
-      requirements:
-        e.template?.requirements.map((r) => ({
-          skill: r.skill.name,
-          count: r.count,
-        })) ?? [],
-    }));
+    // 定休日はイベントがあっても無視する（定休日にイベントが設定されているケースを除外）
+    const eventData = storeEvents
+      .filter((e) => !closedDates.includes(e.date.toISOString().slice(0, 10)))
+      .map((e) => ({
+        date: e.date.toISOString().slice(0, 10),
+        title: e.title,
+        requirements:
+          e.template?.requirements.map((r) => ({
+            skill: r.skill.name,
+            count: r.count,
+          })) ?? [],
+      }));
 
     const prompt = `
     あなたはシフト作成アシスタントです。以下の条件で${year}年${month + 1}月（1日〜${daysInMonth}日）のシフト案を作成してください。
@@ -138,20 +146,25 @@ export async function POST(req: NextRequest) {
     ※ unavailableDatesに記載された日付は、そのスタッフの希望休・公休が既に確定しています。そのスタッフをその日に絶対に配置しないでください。
     ※ ただし、他のスタッフはその日に配置して構いません。unavailableDatesはスタッフ単位の制約であり、日付全体を除外するものではありません。
 
+    # 定休日一覧（closedDates）
+    ${JSON.stringify(closedDates)}
+    ※ 【最重要】この日付は店舗の定休日です。理由を問わず、誰も配置しないでください。shiftsに一切含めないでください。
+
     # 各日の基準となる出退勤時刻（referenceHours）
     ${JSON.stringify(referenceHours, null, 2)}
-    ※ startTime・endTimeは、その日の曜日の店舗営業時間・開店準備時間・閉店後片付け時間から既に計算済みの値です。
+    ※ isClosed: trueの日は定休日です（上記closedDatesと同じ内容です）。誰も配置しないでください。
+    ※ isClosed: falseの日については、startTime・endTimeは、その日の曜日の店舗営業時間・開店準備時間・閉店後片付け時間から既に計算済みの値です。
     ※ 通常出勤のシフトを作成する際は、この日付に対応するstartTime・endTimeを必ずそのまま使用してください。自分で時間を計算したり、09:00〜18:00などの一般的な時間を推測で使わないでください。
 
-    # イベント・必要人数（設定のある日のみ）
+    # イベント・必要人数（設定のある日のみ。定休日は除外済み）
     ${JSON.stringify(eventData, null, 2)}
-    ※ 記載のない日は「通常営業」とし、上記referenceHoursの時間で最低1名を配置してください（スキル指定なし。ただしunavailableDatesに該当するスタッフは除く）。
+    ※ 記載のない日（かつ定休日でない日）は「通常営業」とし、referenceHoursの時間で最低1名を配置してください（スキル指定なし。ただしunavailableDatesに該当するスタッフは除く）。
     ※ イベントが設定されている日も、時間帯は同じくreferenceHoursの値を基本として使用してください。
 
     # 【最重要】スキル条件について
     - イベントで特定スキルの必要人数が指定されている日は、必ずそのスキルを保有するスタッフのみを配置してください。
     - 例：「レジ2名」が必要な日は、staffDataのskills配列に "レジ" を含むスタッフを2名選んでください。skillsに"レジ"がないスタッフは絶対に選ばないでください。
-    - 指定されたスキルを満たすスタッフが人数分いない場合（unavailableDatesによる不足も含む）は、無理に埋めず、不足分は配置しないでください（0名〜可能な人数のみ配置）。この場合、その日について「スキル不足のため○名しか配置できません」という情報を後述のnotesに含めてください。
+    - 指定されたスキルを満たすスタッフが人数分いない場合(unavailableDatesによる不足も含む)は、無理に埋めず、不足分は配置しないでください(0名〜可能な人数のみ配置)。この場合、その日について「スキル不足のため○名しか配置できません」という情報を後述のnotesに含めてください。
 
     # 【最重要】公平な分配について
     - スキル条件・unavailableDatesの制約を満たした上で、スタッフ間の月間の出勤日数・出勤時間ができるだけ均等になるように配置してください。
@@ -161,7 +174,7 @@ export async function POST(req: NextRequest) {
     - 【厳守】unavailableDatesが月内の全日を占めていないスタッフを、出勤0日のまま出力することは禁止です。「均等配分」を理由にスタッフを丸ごと除外しないでください。全スタッフに最低1日以上は必ず配置してください。
 
     # 出力ルール
-    - unavailableDatesに該当するスタッフ×日付の組み合わせは、shiftsに絶対に含めないこと
+    - 上記のclosedDates（定休日）は絶対にshiftsに含めないこと
     - 出力は以下のJSON形式のみ。説明文・Markdown記法(\`\`\`など)は一切含めないこと
 
     {
@@ -188,12 +201,11 @@ export async function POST(req: NextRequest) {
               ? (err as { status?: number }).status
               : undefined;
 
-          // 503(混雑)の場合のみ待ってリトライ。それ以外のエラーは即座に投げる
           if (status !== 503 || attempt === maxRetries - 1) {
             throw err;
           }
 
-          const waitMs = 2000 * (attempt + 1); // 2秒, 4秒, 6秒...
+          const waitMs = 2000 * (attempt + 1);
           console.log(`Gemini 503エラー、${waitMs}ms後にリトライします (試行 ${attempt + 1}/${maxRetries})`);
           await new Promise((resolve) => setTimeout(resolve, waitMs));
         }
@@ -242,16 +254,23 @@ export async function POST(req: NextRequest) {
       console.log("=== Gemini notes ===", parsedResponse.notes);
     }
 
-    // ⑦ DBに反映（スタッフ×日付単位で既存があればスキップ、不正データもスキップ）
+    // ⑦ DBに反映（スタッフ×日付単位で既存があればスキップ、定休日・不正データもスキップ）
     const validStaffIds = new Set(staffs.map((s) => s.id));
+    const closedDateSet = new Set(closedDates);
     let created = 0;
-    let skippedUnavailable = 0;
+    let skippedDuplicate = 0;
+    let skippedClosed = 0;
 
     for (const item of shiftPlan) {
+      if (closedDateSet.has(item.date)) {
+        skippedClosed++;
+        continue;
+      }
+
       const key = `${item.staffId}_${item.date}`;
 
       if (existingStaffDateSet.has(key)) {
-        skippedUnavailable++;
+        skippedDuplicate++;
         continue;
       }
 
@@ -284,6 +303,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const skippedNote =
+      [
+        skippedDuplicate > 0 ? `重複${skippedDuplicate}件` : null,
+        skippedClosed > 0 ? `定休日${skippedClosed}件` : null,
+      ]
+        .filter(Boolean)
+        .join("・");
+
     await prisma.aiGenerationLog.create({
       data: {
         storeId: Number(storeId),
@@ -295,9 +322,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
         success: true,
         message: `${created}件のシフトをAIが作成しました${
-          skippedUnavailable > 0
-            ? `（希望休等との重複により${skippedUnavailable}件はスキップ）`
-            : ""
+          skippedNote ? `（${skippedNote}はスキップ）` : ""
         }`,
         notes: parsedResponse.notes ?? [],
     });

@@ -203,6 +203,9 @@ model StoreBusinessHour {
   /// 0=日曜, 1=月曜, ... 6=土曜
   dayOfWeek      Int      @map("day_of_week")
 
+  /// 定休日かどうか。trueの場合、開店・閉店時刻は無視され、その曜日はAIシフト作成で誰も配置されない
+  isClosed       Boolean  @default(false) @map("is_closed")
+
   /// 開店時刻 "10:00" のような文字列で保持
   openTime       String   @map("open_time")
 

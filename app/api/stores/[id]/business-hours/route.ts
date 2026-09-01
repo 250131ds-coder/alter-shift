@@ -27,6 +27,7 @@ export async function GET(
 
       return {
         dayOfWeek,
+        isClosed: row?.isClosed ?? false,
         openTime: row?.openTime ?? "",
         closeTime: row?.closeTime ?? "",
         prepMinutes: row?.prepMinutes ?? 0,
@@ -81,6 +82,7 @@ export async function PUT(
 
     type HourInput = {
       dayOfWeek: number;
+      isClosed: boolean;
       openTime: string;
       closeTime: string;
       prepMinutes: number;
@@ -96,7 +98,35 @@ export async function PUT(
         continue;
       }
 
-      // 開店・閉店どちらも未入力の場合は「その曜日は設定なし」として扱い、既存行があれば削除
+      // 定休日の場合は、時刻の入力チェックをせずそのまま保存（開店・閉店時刻は空文字でも可）
+      if (h.isClosed) {
+        const updated = await prisma.storeBusinessHour.upsert({
+          where: {
+            storeId_dayOfWeek: { storeId, dayOfWeek },
+          },
+          update: {
+            isClosed: true,
+            openTime: h.openTime || "",
+            closeTime: h.closeTime || "",
+            prepMinutes: Number(h.prepMinutes) || 0,
+            cleanupMinutes: Number(h.cleanupMinutes) || 0,
+          },
+          create: {
+            storeId,
+            dayOfWeek,
+            isClosed: true,
+            openTime: h.openTime || "",
+            closeTime: h.closeTime || "",
+            prepMinutes: Number(h.prepMinutes) || 0,
+            cleanupMinutes: Number(h.cleanupMinutes) || 0,
+          },
+        });
+
+        results.push(updated);
+        continue;
+      }
+
+      // 定休日でなく、開店・閉店どちらも未入力の場合は「その曜日は設定なし」として扱い、既存行があれば削除
       if (!h.openTime && !h.closeTime) {
         await prisma.storeBusinessHour.deleteMany({
           where: { storeId, dayOfWeek },
@@ -116,6 +146,7 @@ export async function PUT(
           storeId_dayOfWeek: { storeId, dayOfWeek },
         },
         update: {
+          isClosed: false,
           openTime: h.openTime,
           closeTime: h.closeTime,
           prepMinutes: Number(h.prepMinutes) || 0,
@@ -124,6 +155,7 @@ export async function PUT(
         create: {
           storeId,
           dayOfWeek,
+          isClosed: false,
           openTime: h.openTime,
           closeTime: h.closeTime,
           prepMinutes: Number(h.prepMinutes) || 0,

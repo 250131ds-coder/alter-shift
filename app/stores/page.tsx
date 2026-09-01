@@ -13,6 +13,7 @@ interface Store {
 
 interface BusinessHourRow {
   dayOfWeek: number;
+  isClosed: boolean;
   openTime: string;
   closeTime: string;
   prepMinutes: number;
@@ -237,21 +238,23 @@ export default function StoresPage() {
 
   const handleHourFieldChange = (
     dayOfWeek: number,
-    field: 'openTime' | 'closeTime' | 'prepMinutes' | 'cleanupMinutes',
-    value: string
+    field: 'isClosed' | 'openTime' | 'closeTime' | 'prepMinutes' | 'cleanupMinutes',
+    value: string | boolean
   ) => {
     setBusinessHours((prev) =>
-      prev.map((row) =>
-        row.dayOfWeek === dayOfWeek
-          ? {
-              ...row,
-              [field]:
-                field === 'prepMinutes' || field === 'cleanupMinutes'
-                  ? Number(value) || 0
-                  : value,
-            }
-          : row
-      )
+      prev.map((row) => {
+        if (row.dayOfWeek !== dayOfWeek) return row;
+
+        if (field === 'isClosed') {
+          return { ...row, isClosed: Boolean(value) };
+        }
+
+        if (field === 'prepMinutes' || field === 'cleanupMinutes') {
+          return { ...row, [field]: Number(value) || 0 };
+        }
+
+        return { ...row, [field]: value as string };
+      })
     );
   };
 
@@ -267,6 +270,7 @@ export default function StoresPage() {
         body: JSON.stringify({
           hours: businessHours.map((h) => ({
             dayOfWeek: h.dayOfWeek,
+            isClosed: h.isClosed,
             openTime: h.openTime,
             closeTime: h.closeTime,
             prepMinutes: h.prepMinutes,
@@ -531,10 +535,11 @@ export default function StoresPage() {
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-left border-collapse">
+                  <table className="w-full min-w-[640px] text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-50 text-xs font-bold text-gray-600">
                         <th className="p-2">曜日</th>
+                        <th className="p-2">定休日</th>
                         <th className="p-2">開店時刻</th>
                         <th className="p-2">閉店時刻</th>
                         <th className="p-2">準備(分前)</th>
@@ -543,28 +548,40 @@ export default function StoresPage() {
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-100">
                       {businessHours.map((row) => (
-                        <tr key={row.dayOfWeek}>
+                        <tr key={row.dayOfWeek} className={row.isClosed ? 'bg-gray-50' : ''}>
                           <td className="p-2 font-bold text-gray-700">
                             {DOW_LABELS[row.dayOfWeek]}曜日
                           </td>
                           <td className="p-2">
                             <input
+                              type="checkbox"
+                              checked={row.isClosed}
+                              onChange={(e) =>
+                                handleHourFieldChange(row.dayOfWeek, 'isClosed', e.target.checked)
+                              }
+                              className="w-4 h-4 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
                               type="time"
                               value={row.openTime}
+                              disabled={row.isClosed}
                               onChange={(e) =>
                                 handleHourFieldChange(row.dayOfWeek, 'openTime', e.target.value)
                               }
-                              className="px-2 py-1 border border-gray-300 rounded text-sm"
+                              className="px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
                             />
                           </td>
                           <td className="p-2">
                             <input
                               type="time"
                               value={row.closeTime}
+                              disabled={row.isClosed}
                               onChange={(e) =>
                                 handleHourFieldChange(row.dayOfWeek, 'closeTime', e.target.value)
                               }
-                              className="px-2 py-1 border border-gray-300 rounded text-sm"
+                              className="px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
                             />
                           </td>
                           <td className="p-2">
@@ -572,10 +589,11 @@ export default function StoresPage() {
                               type="number"
                               min={0}
                               value={row.prepMinutes}
+                              disabled={row.isClosed}
                               onChange={(e) =>
                                 handleHourFieldChange(row.dayOfWeek, 'prepMinutes', e.target.value)
                               }
-                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
                             />
                           </td>
                           <td className="p-2">
@@ -583,10 +601,11 @@ export default function StoresPage() {
                               type="number"
                               min={0}
                               value={row.cleanupMinutes}
+                              disabled={row.isClosed}
                               onChange={(e) =>
                                 handleHourFieldChange(row.dayOfWeek, 'cleanupMinutes', e.target.value)
                               }
-                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
                             />
                           </td>
                         </tr>
@@ -596,7 +615,8 @@ export default function StoresPage() {
                 </div>
 
                 <p className="text-[11px] text-gray-400 mt-3">
-                  開店・閉店時刻を両方空欄にすると「その曜日は営業時間未設定」として扱われ、AIシフト作成時はデフォルト（09:00〜18:00）が使われます。
+                  「定休日」にチェックを入れると、その曜日は開店・閉店時刻の入力が不要になり、AIシフト作成時は誰も配置されなくなります。<br />
+                  開店・閉店時刻を両方空欄（かつ定休日チェックなし）にすると「その曜日は営業時間未設定」として扱われ、AIシフト作成時はデフォルト（09:00〜18:00）が使われます。
                 </p>
 
                 <div className="flex gap-2 justify-end pt-4 border-t border-gray-100 mt-4">
