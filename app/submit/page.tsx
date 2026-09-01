@@ -44,6 +44,19 @@ export default function SubmitPage() {
 
   const minutes = ['00', '15', '30', '45'];
 
+  const monthOptions = Array.from({ length: 4 }, (_, i) => {
+    const base = new Date(now.getFullYear(), now.getMonth() - 1 + i, 1);
+    const y = base.getFullYear();
+    const m = base.getMonth() + 1;
+
+    return {
+      value: `${y}-${m}`,
+      label: `${y}年 ${m}月`,
+      year: y,
+      month: m,
+    };
+  });
+
   useEffect(() => {
     const fetchStaff = async () => {
       setIsLoadingStaffs(true);
@@ -268,15 +281,16 @@ export default function SubmitPage() {
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">対象月</label>
-              <select
-                value={`${currentYear}-${currentMonth}`}
+              <select 
+                value={`${currentYear}-${currentMonth}`} 
                 onChange={handleMonthChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                <option value="2026-5">2026年 5月</option>
-                <option value="2026-6">2026年 6月</option>
-                <option value="2026-7">2026年 7月</option>
-                <option value="2026-8">2026年 8月</option>
+                {monthOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
