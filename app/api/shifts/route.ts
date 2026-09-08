@@ -163,6 +163,9 @@ type ShiftWithRelations = {
   store: {
     name: string;
   };
+  shiftComments: {
+    comment: string;
+  }[];
 };
 
 /**
@@ -193,6 +196,7 @@ const toShiftResponse = (shift: ShiftWithRelations) => {
     role: shift.staff.role,
     storeId: shift.storeId,
     storeName: shift.store.name,
+    comment: shift.shiftComments[0]?.comment ?? null,
   };
 };
 
@@ -247,7 +251,7 @@ export async function GET(request: NextRequest) {
         },
         ...(status ? { status } : {}),
       },
-      include: {
+            include: {
         staff: {
           select: {
             name: true,
@@ -259,12 +263,19 @@ export async function GET(request: NextRequest) {
             name: true,
           },
         },
+        shiftComments: {
+          where: { category: 'request' },
+          select: {
+            comment: true,
+          },
+        },
       },
       orderBy: [
         { date: 'asc' },
         { staffId: 'asc' },
       ],
     });
+    
 
     console.log('GET /api/shifts params:', {
       storeId: numericStoreId,
@@ -417,7 +428,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const created = await prisma.shift.create({
+        const created = await prisma.shift.create({
       data: {
         storeId: Number(storeId),
         staffId: Number(staffId),
@@ -437,6 +448,12 @@ export async function POST(request: NextRequest) {
         store: {
           select: {
             name: true,
+          },
+        },
+        shiftComments: {
+          where: { category: 'request' },
+          select: {
+            comment: true,
           },
         },
       },

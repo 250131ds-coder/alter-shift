@@ -18,6 +18,7 @@ type ShiftRow = {
   storeName: string;
   isOvernight?: boolean;
   workMinutes?: number;
+  comment?: string | null;
 };
 
 type StaffRow = {
@@ -726,7 +727,7 @@ export default function Page() {
                                       ? `時間: ${shift.startTime} - ${shift.endTime}`
                                       : null,
                                     shift.isOvernight ? '夜勤: あり' : null,
-                                    shift.status ? `状態: ${shift.status}` : null,
+                                    shift.comment ? `備考: ${shift.comment}` : null,
                                   ]
                                     .filter(Boolean)
                                     .join('\n')
@@ -734,7 +735,7 @@ export default function Page() {
                             }
                           >
                             {shift ? (
-                              <div className="space-y-1">
+                              <div className="space-y-1 relative">
                                 <div className="font-medium">{shift.type}</div>
 
                                 {!isNoTimeShift(shift.type) &&
@@ -762,6 +763,12 @@ export default function Page() {
                                       h
                                     </div>
                                   )}
+
+                                {shift.comment && shift.comment.trim() !== '' && (
+                                  <span className="absolute top-0 right-0 text-xs" title={`備考: ${shift.comment}`}>
+                                    📝
+                                  </span>
+                                )}
                               </div>
                             ) : (
                               <span className="text-slate-300">-</span>
