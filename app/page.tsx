@@ -784,6 +784,28 @@ export default function Page() {
           </div>
         </section>
 
+        <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <h2 className="mb-3 text-lg font-bold">凡例</h2>
+
+          <div className="flex flex-wrap gap-3 text-sm">
+            <div className="rounded-md bg-green-100 px-3 py-2 text-green-900">
+              通常勤務
+            </div>
+            <div className="rounded-md bg-indigo-100 px-3 py-2 text-indigo-900">
+              夜勤勤務
+            </div>
+            <div className="rounded-md bg-yellow-100 px-3 py-2 text-yellow-900">
+              希望休
+            </div>
+            <div className="rounded-md bg-gray-200 px-3 py-2 text-gray-900">
+              公休
+            </div>
+            <div className="rounded-md bg-sky-100 px-3 py-2 text-sky-900">
+              応援
+            </div>
+          </div>
+        </section>
+
         {editingShift && (
           <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="mb-4 text-lg font-bold">
